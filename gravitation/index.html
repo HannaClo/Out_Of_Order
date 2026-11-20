@@ -1,0 +1,1814 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fysik är ett förslag – Värld 1: Gravitation</title>
+
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #06040e;
+    overflow: hidden;
+    font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace;
+    color: #cfc8ff;
+  }
+  canvas { display: block; }
+
+  /* Text uppe till vänster */
+  #hud {
+  z-index: 3;
+  position: fixed;
+  left: 32px;
+  top: 32px;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre;
+  pointer-events: none;
+  text-shadow: 0 0 6px #000;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+  /* Text nere till höger */
+  #board {
+    z-index: 3;
+    position: fixed;
+    right: 14px;
+    bottom: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre;
+    pointer-events: none;
+    text-align: right;
+    color: #7ff5e3;
+    text-shadow: 0 0 6px #000;
+  }
+
+/* Startskärmen – samma layout som Vattenvärlden, i gravitationens färg */
+body.intro #hud,
+body.intro #board{visibility:hidden}
+#start{font-family:"Avenir Next","Segoe UI",sans-serif;position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;
+ gap:16px;background:radial-gradient(ellipse at 50% 45%,#2a0b2e 0%,#06040e 72%);text-align:center;padding:30px 20px;box-sizing:border-box;overflow-y:auto;
+ transition:opacity .9s;color:#f2cfef}
+#start.leaving{opacity:0;pointer-events:none}
+.start-label{color:#ff3df2;font:11px ui-monospace,Menlo,monospace;letter-spacing:.2em}
+#start h1{margin:0;font-size:clamp(36px,5vw,64px);font-weight:500;letter-spacing:.015em;color:#ff8af6;text-shadow:0 0 18px #ff3df2aa,0 0 40px #ff3df255}
+.start-world{color:#ff3df2;font:13px ui-monospace,Menlo,monospace;letter-spacing:.35em}
+.start-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;width:min(820px,100%);margin:24px 0 16px}
+.start-step{padding:26px 20px;min-height:170px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:12px;border:1px solid #5c2060;background:rgba(30,6,34,.65)}
+.step-number{color:#ffc2f8;font:12px ui-monospace,monospace;letter-spacing:.15em}
+.start-step strong{color:#ff3df2;font-size:15px;letter-spacing:.1em}
+.start-step span:not(.step-number){color:#f2d4ef;font-size:17px;line-height:1.55}
+.start-note{color:#ffb6f7;font:12px ui-monospace,monospace;margin:4px 0;max-width:620px;line-height:1.7}
+.start-btns{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+#start button{font:inherit;font-size:15px;font-weight:bold;letter-spacing:.12em;padding:15px 34px;border:2px solid #ff3df2;background:transparent;color:#ff3df2;cursor:pointer;border-radius:3px;transition:background .2s,color .2s,box-shadow .2s}
+#start button:hover,#start button:focus-visible{background:#ff3df2;color:#06040e;box-shadow:0 0 24px #ff3df266;outline:none}
+.start-controls{display:flex;gap:22px;color:#a8709f;font:11px ui-monospace,monospace;letter-spacing:.08em;flex-wrap:wrap;justify-content:center}
+@media(max-width:600px){#start{justify-content:flex-start;padding-top:36px;gap:13px}.start-steps{grid-template-columns:1fr;max-width:360px;gap:8px}.start-step{padding:16px;min-height:auto;gap:8px}}
+#err{color:#ffb86b;font-size:13px}
+#err:empty{display:none}
+</style>
+
+<!--
+  p5.js laddas från ett CDN (Content Delivery Network).
+  Det betyder att bibliotekets kod hämtas från internet i stället för att ligga i den här filen.
+  Biblioteket ger bland annat createCanvas(), draw(), noise(), random() och matematiska hjälpfunktioner.
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+<script src="../tillbaka.js" defer></script>
+<!-- STARTSKÄRM: storlek och marginaler (samma känsla som kontrollcentret). Ändrar inga färger. -->
+<style id="start-layout">
+#start{
+  justify-content:center;justify-content:safe center;     /* centrerad, men scrollar om fönstret är för lågt */
+  align-items:center;text-align:center;
+  gap:clamp(12px,2.2vh,22px);
+  padding:clamp(88px,15vh,140px) clamp(20px,5vw,72px) clamp(24px,3vh,36px);   /* mer luft upptill = innehållet sitter lägre (och knappen får plats) */
+  scrollbar-width:none;                                   /* ingen scrollbar som skjuter innehållet åt sidan */
+}
+#start::-webkit-scrollbar{display:none}
+.start-label{font-size:clamp(12px,1.2vw,16px);letter-spacing:.18em}
+#start h1{
+  font-size:clamp(30px,min(5.5vw,9.5vh),84px);
+  line-height:1.05;
+  overflow-wrap:anywhere;
+}
+.start-world{font-size:clamp(13px,1.2vw,16px);letter-spacing:.35em}
+.start-steps{grid-template-columns:1fr;width:min(1300px,100%);max-width:none;margin-left:auto;margin-right:auto;gap:clamp(12px,2vw,28px);
+  margin-top:clamp(16px,4vh,48px);margin-bottom:clamp(8px,2vh,24px)}
+.start-step{padding:clamp(18px,3vh,32px) 28px;min-height:min(24vh,280px);gap:clamp(8px,1.6vh,16px)}
+.step-number{font-size:15px}
+.start-step strong{font-size:clamp(17px,1.5vw,22px)}
+.start-step span:not(.step-number){font-size:clamp(16px,1.45vw,21px);line-height:1.5}
+.start-note{font-size:clamp(12px,1.1vw,15px);max-width:820px}
+#start button{font-size:clamp(15px,1.3vw,19px);padding:clamp(14px,2.2vh,20px) clamp(32px,4vw,52px)}
+.start-controls{font-size:clamp(11px,1vw,14px);gap:12px 28px}
+#err{font-size:14px}
+@media(min-width:900px){.start-steps{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:600px){#start{padding:72px 20px 40px}.start-step{padding:18px;min-height:0}}
+</style>
+</head>
+<body class="intro">
+
+  <div id="start">
+ <div class="start-label">INTERAKTIV INSTALLATION · VÄRLD 01</div>
+ <h1>GRAVITATIONSVÄRLDEN</h1>
+ <div class="start-world">OUT OF ORDER</div>
+ <div class="start-steps">
+  <div class="start-step"><span class="step-number">01</span><strong>VÄNTA IN</strong><span>Låt partiklarna samlas och fylla rummet. Vänta tills de har dragit sig tillbaka innan du klappar igen.</span></div>
+  <div class="start-step"><span class="step-number">02</span><strong>PÅVERKA</strong><span>Klappa händerna eller tryck på mellanslag. Ljud förändrar världen.</span></div>
+  <div class="start-step"><span class="step-number">03</span><strong>UTFORSKA</strong><span>Se hur partiklarna rör sig när gravitationen förändras.</span></div>
+ </div>
+ <p class="start-note">TIPS: Låt partiklarna sväva tillbaka innan du klappar igen.</p>
+ <div class="start-btns"><button id="go">KLIV IN I VÄRLDEN</button></div>
+ <div class="start-controls"><span>[MELLANSLAG] eller klappa</span></div>
+ <div id="err"></div>
+</div>
+<div id="vignette"></div>
+<div id="grain"></div>
+<pre id="hud"></pre>
+<pre id="board"></pre>
+
+<script>
+/* =====================================================================
+   FYSIK ÄR ETT FÖRSLAG – Värld 1: Gravitation
+
+   Så här fungerar det:
+   - Partiklarna SVÄVAR runt (state 'floating').
+   - Vid en klapp FALLER de (state 'falling') i en riktning som låses när fallet startar.
+   - När de når en yta LIGGER de i en hög (state 'resting') tills högen lyfter igen.
+   - K är "kaosnivån" (0 till 1). Ju högre K, desto mer fel beter sig världen.
+
+   Koden är uppdelad i:  1. inställningar  2. setup  3. flödesfält
+   4. partiklar  5. klapp och läge  6. mikrofon  7. ljud  8. ritning (8b. grafik)  9. text och tangenter
+   ===================================================================== */
+
+
+/* ---------- 1. INSTÄLLNINGAR ---------- */
+// const används för värden som inte ska tilldelas på nytt under körningen.
+// N styr hur många partikelobjekt som skapas. Fler partiklar ger tätare bild men kräver mer beräkningskraft.
+const N = 2800;                 // antal partiklar (sänk om det hackar)
+const G = 9.81 * 300;           // gravitation i pixlar/s² (1 meter = 300 pixlar)
+const COLS = 150;               // antal kolumner i högarna på golv och tak
+const ROWS = 90;                // antal rader i högarna på väggarna
+const DH = 1.2;                 // hur mycket varje landad partikel höjer högen (px)
+const MAX_PILE = 160;           // högsta tillåtna hög (px)
+const ROLL = 5;                 // hur brant en hög får vara innan partiklar rullar ner
+const HUES = [320, 185, 85, 270, 28];   // neonfärger: magenta, cyan, lime, violett, orange
+const REST_AFTER = 1.5;         // sekunder innan högen lyfter igen
+const CLAP_STEP = 0.2;          // hur mycket K stiger per klapp i användarläge (10 klapp till max)
+const FINALE_SECS = 4;          // sekunder av max-kaos innan allt återställs
+const VORTEX_START_K = 0.4;
+const VORTEX_PARTICLE_SHARE = 0.20;
+const IDLE_RESET = 40;          // sekunder utan klapp innan användarläget återställs
+const GLIDE_HOME = 160;         // maxfart (px/s) när partiklar svävar tillbaka till sitt hem
+const GX = 40, GY = 24;         // rutnätets storlek för flödesfältet
+
+/* ---------- Variabler som ändras medan programmet körs ---------- */
+// let används för variabler vars innehåll kan ändras under körningen.
+// En array ([]) passar när vi har många partiklar som ska gås igenom i loopar.
+// Varje partikel är ett objekt med egna egenskaper, till exempel position, hastighet och tillstånd.
+let particles = [];             // alla partiklar
+let piles = {};                 // högarnas höjd: piles.floor[cell], piles.ceiling[cell] osv.
+let floorY, cellW, cellH;       // golvets y-position och storleken på högarnas celler
+let psi = [], flowX = [], flowY = [];   // flödesfältet (rutnät)
+
+let mode = 'user';              // startläge: 'user' (K stiger per klapp). Tangent 1 byter till 'demo' (K = 0 hela tiden), tangent 2 tillbaka till 'user'
+let K = 0;                      // kaosnivå 0..1
+let target = Math.PI;           // slumpad "fel riktning" (vinkel)
+let fallAt = null;              // tidpunkt då partiklarna ska börja falla
+let recoverAt = 0;              // tidpunkt då högarna börjar lyfta
+let flash = 0;                  // förvarningsflimmer
+let rings = [];                 // tryckvågor (ringar) efter en klapp
+let landedThisFrame = 0;        // antal partiklar som landade i den här bildrutan
+let tickAt = 0;                 // tidigaste tidpunkt för nästa "tick"-ljud
+let lastActivity = 0;           // tidpunkt för senaste klappet
+let resetAt = null;             // tidpunkt då finalen slutar och allt återställs
+let lastClapT = -99;            // tidpunkt för senaste klappet (för puls och skakning)
+
+let finaleBurstStarted = false;
+let worldDead = false;
+let finaleBangAt = null;
+let finaleFlashAt = null;
+let finaleFadeAt = null;
+
+const FINAL_FADE_SECS = 2;
+const FINAL_HOLD_SECS = 1;
+
+let musicStep = 0;
+let musicNextStepAt = 0;
+let musicActive = false;
+let musicBeatAt = -99;
+
+let audioCtx = null, master = null, musicBus = null, analyser = null, micBuffer = null, noiseBuffer = null;
+let glitterBus = null, shimmerBuffer = null;   // glitterljudets egen kanal (med lite efterklang) och ett längre brus
+let micState = 'ej startad';
+let levelHistory = [];          // de senaste ljudnivåerna
+let rms = 0, lastRms = 0, thr = 0;   // ljudnivå, förra nivån och tröskel
+let micShow = 0;                // utjämnad nivå som bara används för ljudstapeln i texten
+// OBS: rms räknas ut direkt från råa ljudvärden (-1..1) och är redan en LINJÄR amplitud.
+// Ingen omräkning från dB behövs. Hade vi läst dB (t.ex. getFloatFrequencyData) hade vi använt
+// linjär = 10 ** (dB / 20). Staplen nedan är linjär: varje ruta är lika mycket amplitud.
+const MIC_BAR_MAX = 0.2;        // rms som motsvarar en full stapel (linjär skala 0..0,2)
+let micPeak = 0, micPeakAt = 0; // topphållning: högsta nivån de senaste sekunderna
+let micClapAt = -99, micClapLevel = 0;   // när och med vilken nivå mikrofonen senast registrerade ett klapp
+const outVol = 1.0;             // utvolym (master), fast värde – hela ljudmixen höjd lika mycket
+const MIC_BAR_LEN = 20;         // antal rutor i ljudstapeln (samma längd som K-stapeln)
+const MUSIC_START_K = CLAP_STEP; // musiken börjar på nivå 1
+let sens = 1;                   // mikrofonkänslighet
+let clapLock = 0;               // spärr så ett klapp inte räknas flera gånger
+
+const hudEl = document.getElementById('hud');
+const boardEl = document.getElementById('board');
+
+
+/* ---------- 2. SETUP ---------- */
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  pixelDensity(1);
+  build();
+  background(6, 4, 14);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  build();
+  background(6, 4, 14);
+}
+
+// Räknar ut storlekar och skapar alla partiklar på nytt
+function build() {
+  floorY = height * 0.95;
+  cellW = width / COLS;
+  cellH = floorY / ROWS;
+
+  // Högarna börjar på höjd 0. Varje yta har en lista med höjder, en per cell.
+  piles = {
+    floor:   Array(COLS).fill(0),
+    ceiling: Array(COLS).fill(0),
+    right:   Array(ROWS).fill(0),
+    left:    Array(ROWS).fill(0),
+  };
+
+  particles = [];
+  for (let i = 0; i < N; i++) {
+    const homeX = random(40, width - 40);          // "hem": jämnt fördelat över hela skärmen
+    const homeY = random(40, floorY - 70);
+    particles.push({
+      x: homeX, y: homeY,
+      homeX: homeX, homeY: homeY,
+      phase: homeX * 0.008 + homeY * 0.006,        // gör att hemmen dansar i vågor vid hög K
+      vx: 0, vy: 0,
+      state: 'floating',                           // 'floating', 'falling' eller 'resting'
+      surface: 'floor',                            // 'floor', 'ceiling', 'right' eller 'left'
+      dirX: 0, dirY: 1, gravity: G,                // fallriktning och styrka (låses när fallet startar)
+      hue: i % 5,                                  // färg (index i HUES)
+      big: random() < 0.25,                        // var fjärde partikel är stor
+      vortexMember: random() < VORTEX_PARTICLE_SHARE,
+vortexOrbit: random(),
+      // Grafik: djup och storlek (påverkar bara hur partikeln ritas)
+      depth: constrain(randomGaussian(0.72, 0.18), 0.3, 1),   // 0.3 = långt bort, 1 = nära (de flesta nära fokus)
+      size: 1.0 + pow(random(), 3) * 3.5,          // oftast små, ibland stora, som riktigt damm
+      wasResting: false,                           // används för att upptäcka landningar
+      lastSpeed: 0,                                // fart precis före landning (styr gnistor)
+      heat: 0,                                     // glöd efter landning, svalnar mot 0
+      bounces: 0,                                  // antal studsar
+      pileCell: 0,                                 // vilken cell i högen den ligger i
+      fallStart: 0,                                // när fallet började
+      wake: random(0, 0.5),                        // fördröjning innan den lyfter från högen
+    });
+  }
+}
+
+
+/* ---------- 3. FLÖDESFÄLT ----------
+   Flödet är "curl noise": ett mjukt, slumpartat flöde som får partiklarna att
+   sväva runt utan att klumpa ihop sig. */
+function updateField(t) {
+  // Steg 1: ett slumpat bergslandskap (noise) över rutnätet
+  for (let j = 0; j <= GY; j++) {
+    psi[j] = [];
+    for (let i = 0; i <= GX; i++) {
+      psi[j][i] = noise(i * 0.13, j * 0.13, t * 0.12);
+    }
+  }
+  // Steg 2: flödet följer landskapets lutning, vriden 90 grader
+  for (let j = 0; j < GY; j++) {
+    flowX[j] = [];
+    flowY[j] = [];
+    for (let i = 0; i < GX; i++) {
+      const a = psi[j][i];
+      flowX[j][i] = (psi[j + 1][i] - a) * 250;
+      flowY[j][i] = -(psi[j][i + 1] - a) * 250;
+    }
+  }
+}
+
+
+/* ---------- 4. PARTIKLAR ---------- */
+
+// Hjälpfunktioner för att hantera de fyra ytorna (golv, tak, höger vägg, vänster vägg)
+
+function isFloorOrCeiling(p) {
+  return p.surface === 'floor' || p.surface === 'ceiling';
+}
+
+// Vilken cell i högen partikeln befinner sig vid
+function cellOf(p) {
+  if (isFloorOrCeiling(p)) return constrain(floor(p.x / cellW), 0, COLS - 1);
+  return constrain(floor(p.y / cellH), 0, ROWS - 1);
+}
+
+// Hur långt partikeln är från ytan den faller mot
+function distanceToWall(p) {
+  if (p.surface === 'floor')   return floorY - p.y;
+  if (p.surface === 'ceiling') return p.y;
+  if (p.surface === 'right')   return width - p.x;
+  return p.x;                                   // vänster vägg
+}
+
+// Flyttar partikeln så att den hamnar på avståndet d från ytan
+function setDistanceToWall(p, d) {
+  if (p.surface === 'floor')        p.y = floorY - d;
+  else if (p.surface === 'ceiling') p.y = d;
+  else if (p.surface === 'right')   p.x = width - d;
+  else                              p.x = d;
+}
+
+// Hur snabbt partikeln rör sig mot ytan (positivt = på väg mot ytan)
+function speedTowardWall(p) {
+  if (p.surface === 'floor')   return p.vy;
+  if (p.surface === 'ceiling') return -p.vy;
+  if (p.surface === 'right')   return p.vx;
+  return -p.vx;
+}
+
+// Studsa lite (ca 30 % av farten studsar tillbaka)
+function bounce(p, cell) {
+  setDistanceToWall(p, piles[p.surface][cell] + 1);
+  if (isFloorOrCeiling(p)) { p.vy *= -0.3; p.vx *= 0.6; }
+  else                     { p.vx *= -0.3; p.vy *= 0.6; }
+}
+
+// Lägg partikeln ovanpå högen i en viss cell
+function placeOnPile(p, cell) {
+  const distance = piles[p.surface][cell] + random(0, 1.5);
+  if (isFloorOrCeiling(p)) p.x = (cell + random()) * cellW;
+  else                     p.y = (cell + random()) * cellH;
+  setDistanceToWall(p, distance);
+}
+
+// Partikeln landar: rulla ner för högens sida och lägg dig där det är lägst
+function land(p, cell) {
+  const pile = piles[p.surface];
+  for (let k = 0; k < 8; k++) {
+    if (cell > 0 && pile[cell] > pile[cell - 1] + ROLL) cell--;
+    else if (cell < pile.length - 1 && pile[cell] > pile[cell + 1] + ROLL) cell++;
+    else break;
+  }
+  placeOnPile(p, cell);
+  pile[cell] = min(pile[cell] + DH, MAX_PILE);    // högen blir lite högre
+  p.state = 'resting';
+  p.pileCell = cell;
+  p.vx = 0;
+  p.vy = 0;
+  p.bounces = 0;
+  landedThisFrame++;
+}
+
+// Partikeln lyfter sakta från högen, bort från ytan
+function lift(p) {
+  const pile = piles[p.surface];
+  pile[p.pileCell] = max(0, pile[p.pileCell] - DH);
+  p.state = 'floating';
+  p.vx = random(-20, 20);
+  p.vy = random(-20, 20);
+  if (p.surface === 'floor')        p.vy -= 200;
+  else if (p.surface === 'ceiling') p.vy += 200;
+  else if (p.surface === 'right')   p.vx -= 200;
+  else                              p.vx += 200;
+}
+
+// Uppdaterar alla partiklar en bildruta (dt = tid sedan förra bildrutan, now = tid i sekunder)
+// Uppdaterar alla partiklar en bildruta (dt = tid sedan förra bildrutan, now = tid i sekunder)
+function updateParticles(dt, now) {
+  landedThisFrame = 0;
+
+  for (const p of particles) {
+    if (p.state === 'floating') updateFloating(p, dt, now);
+    else if (p.state === 'falling') updateFalling(p, dt, now);
+    else if (!finaleBurstStarted && now > recoverAt + p.wake) lift(p); // efter finalen ligger partiklarna kvar
+  }
+
+  if (finaleBurstStarted && !worldDead && particles.length > 0 && particles.every(p => p.state === 'resting')) {
+  worldDead = true;
+  finaleFadeAt = now;
+
+  // Två sekunders avslocknande och därefter fyra sekunders mörker.
+  resetAt = now + FINAL_FADE_SECS + FINAL_HOLD_SECS;
+
+  sparks = [];
+  rings = [];
+  hudEl.textContent = '';
+  boardEl.textContent = '';
+}
+}
+
+// Bara en mindre grupp partiklar bildar virveln: inga extra former eller grafiska element.
+// De övriga partiklarna fortsätter sväva fritt och blir stjärnorna runt slukhålet.
+function applyVortex(p, dt) {
+  if (!p.vortexMember || K < VORTEX_START_K || (K >= 0.999 && finaleBurstStarted)) return;
+
+  // Virveln börjar först vid nivå 5. Den utvalda gruppen syns tydligt redan
+  // där, och dras allt snabbare runt och in mot ett osynligt centrum när K stiger.
+  const progress = constrain((K - VORTEX_START_K) / (1 - VORTEX_START_K), 0, 1);
+  const level = 0.22 + 0.78 * pow(progress, 0.72);
+  const cx = width * 0.5;
+  const cy = floorY * 0.47;
+  const dx = p.x - cx;
+  const dy = p.y - cy;
+  const radius = max(18, sqrt(dx * dx + dy * dy));
+
+  const tangentX = -dy / radius;
+  const tangentY =  dx / radius;
+  const radialX = dx / radius;
+  const radialY = dy / radius;
+
+  // Varje utvald partikel får en egen omloppsradie. De krymper med K,
+  // så det blir ett levande slukhål med fria partiklar kvar runtom.
+  const scale = min(width, floorY);
+  const outerRadius = scale * (0.15 + p.vortexOrbit * 0.24);
+  const innerRadius = scale * (0.035 + p.vortexOrbit * 0.075);
+  const targetRadius = lerp(outerRadius, innerRadius, pow(level, 0.92));
+  const radialSpeed = constrain((targetRadius - radius) * (0.9 + level * 2.2), -230, 230);
+
+  // Den utvalda gruppen roterar kraftigt; övriga partiklar påverkas inte av virveln.
+  const orbitSpeed = 125 + level * 430;
+  const targetVx = tangentX * orbitSpeed + radialX * radialSpeed;
+  const targetVy = tangentY * orbitSpeed + radialY * radialSpeed;
+  const response = 2.4 + level * 8.0;
+  const blend = min(1, response * dt);
+  p.vx += (targetVx - p.vx) * blend;
+  p.vy += (targetVy - p.vy) * blend;
+}
+
+// SVÄVAR: följer flödesfältet och dras mjukt tillbaka mot sitt hem
+function updateFloating(p, dt, now) {
+  const speedBoost = 1 + K * 2;                   // allt går snabbare ju högre K
+  const springStrength = 1.2 * (1 + K);
+
+  // Flödet i rutan där partikeln är
+  const i = constrain(floor(p.x / width * GX), 0, GX - 1);
+  const j = constrain(floor(p.y / floorY * GY), 0, GY - 1);
+
+  // Hemmet dansar runt i vågor när K är hög
+  const danceSize = K * 70;
+  const danceTime = now * (1 + 3 * K);
+  const targetX = p.homeX + sin(danceTime + p.phase) * danceSize;
+  const targetY = p.homeY + cos(danceTime * 0.8 + p.phase * 1.3) * danceSize;
+
+  // Fjäder mot hemmet (med en maxfart)
+  let springX = (targetX - p.x) * springStrength;
+  let springY = (targetY - p.y) * springStrength;
+  const springLen = dist(0, 0, springX, springY);
+  const maxLen = GLIDE_HOME * speedBoost;
+  if (springLen > maxLen) {
+    springX *= maxLen / springLen;
+    springY *= maxLen / springLen;
+  }
+
+  // Flöde + fjäder ger farten, sedan flyttar vi partikeln
+  p.vx += (flowX[j][i] * speedBoost + springX - p.vx) * dt * 2;
+  p.vy += (flowY[j][i] * speedBoost + springY - p.vy) * dt * 2;
+  applyVortex(p, dt);
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+  p.x = constrain(p.x, 0, width);
+  p.y = constrain(p.y, 0, floorY);
+}
+
+// FALLER: rak acceleration i riktningen som låstes när fallet startade
+function updateFalling(p, dt, now) {
+  p.vx += p.dirX * p.gravity * dt;
+  p.vy += p.dirY * p.gravity * dt;
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+
+  // Har partikeln nått högen (eller ytan)?
+  const cell = cellOf(p);
+  if (distanceToWall(p) <= piles[p.surface][cell]) {
+    if (speedTowardWall(p) > 200 && p.bounces < 2) {
+      bounce(p, cell);
+      p.bounces++;
+    } else {
+      land(p, cell);
+      return;                                     // klar, den ligger nu i högen
+    }
+  }
+
+  // De andra väggarna och golvet stoppar bara partikeln så att den glider längs dem
+  if (p.x < 0)          { p.x = 0;      p.vx = max(p.vx, 0); }
+  else if (p.x > width) { p.x = width;  p.vx = min(p.vx, 0); }
+  if (p.y < 0)            { p.y = 0;      p.vy = max(p.vy, 0); }
+  else if (p.y > floorY)  { p.y = floorY; p.vy = min(p.vy, 0); }
+
+  // Faller den för länge (över 7 sekunder) börjar den sväva igen
+  if (!finaleBurstStarted && now - p.fallStart > 7) {
+    p.state = 'floating';
+    p.vx = 0;
+    p.vy = 0;
+  }
+}
+
+// Hur snabbt riktningen vrids bort från "ner". Exponenten 0,75 gör skillnaden tydlig redan på låga nivåer.
+function tilt(k) {
+  return pow(k, 0.75);
+}
+
+// Skickar iväg alla svävande partiklar att falla
+// Varje klapp släpper iväg partiklarna med den vanliga fallfunktionen.
+// På högre K byggs virveln samtidigt upp mellan klapparna, medan partiklarna svävar.
+function releaseFall(now) {
+  fallAt = null;
+
+  // Sista klappen slår sönder ordningen: partiklarna kastas ut från mitten
+  // och faller sedan tillbaka mot golvet. Inga nya visuella objekt skapas.
+  if (K >= 0.999 && !finaleBurstStarted) {
+    finaleBurstStarted = true;
+    const cx = width * 0.5;
+    const cy = floorY * 0.48;
+
+    for (const p of particles) {
+      if (p.state === 'resting') lift(p);
+
+      const dx = p.x - cx;
+      const dy = p.y - cy;
+      const radius = max(24, sqrt(dx * dx + dy * dy));
+      const angle = atan2(dy, dx) + random(-0.16, 0.16);
+      const nx = cos(angle);
+      const ny = sin(angle);
+      const tangentX = -ny;
+      const tangentY = nx;
+      const blast = random(260, 560);
+      const spin = random(-95, 95);
+
+      // Explosionen sprider ut molnet; en uppåtriktad impuls gör att partiklarna
+      // hinner sväva till innan den vanliga nedåtriktade gravitationen tar över.
+      p.dirX = 0;
+      p.dirY = 1;
+      p.gravity = G * random(1.05, 1.25);
+      p.surface = 'floor';
+      p.state = 'falling';
+      p.bounces = 0;
+      p.fallStart = now;
+      p.vx = nx * blast + tangentX * spin + random(-28, 28);
+      p.vy = ny * blast + tangentY * spin - random(240, 430);
+    }
+
+    finaleBangAt = now;
+finaleFlashAt = now;
+recoverAt = now + REST_AFTER;
+finaleBang();
+return;
+  }
+
+  // Vanligt fall vid lägre kaosnivåer – den ursprungliga gravitationslogiken behålls.
+  const c = min(1, max(0, (K - 0.65) / 0.35));
+  for (const p of particles) {
+    if (p.state !== 'floating') continue;
+    if (random() < min(0.35, K) * (1 - c)) continue;
+
+    const mild = max(0, (K - 0.15) / 0.85) * random(-1, 1) * 0.35;
+    const wild = c * random(-1, 1) * PI;
+    const angle = tilt(K) * target + mild + wild;
+    p.dirX = sin(angle);
+    p.dirY = cos(angle);
+    p.gravity = G * (1 + 1.4 * K) * random(1 - 0.2 * K - 0.4 * c, 1 + 0.2 * K + 0.6 * c);
+
+    if (abs(p.dirY) >= abs(p.dirX)) p.surface = p.dirY > 0 ? 'floor' : 'ceiling';
+    else                            p.surface = p.dirX > 0 ? 'right' : 'left';
+
+    p.state = 'falling';
+    p.bounces = 0;
+    p.fallStart = now;
+    p.vx = p.dirX * 160 * c;
+    p.vy = p.dirY * 160 * c;
+  }
+
+  recoverAt = now + REST_AFTER;
+  fallShimmer();
+}
+
+
+/* ---------- 5. KLAPP OCH LÄGE ----------
+   Två lägen: 'demo' (K är alltid 0, allt fungerar) och 'user' (varje klapp höjer K).
+   När K når 1 pågår kaoset en stund (FINALE_SECS) och sedan återställs allt. */
+ 
+function clap() {
+
+// Ignorera fler klappar medan finalen pågår eller världen har stannat.
+if (resetAt !== null || finaleBurstStarted || worldDead) return;
+
+// En registrerad klapp räknas som aktivitet.
+window.resetInactivityTimer?.();
+
+const now = millis() / 1000;
+let finalClap = false;
+
+if (mode === 'user') {
+  if (K === 0) warn();
+
+  const previousK = K;
+  K = min(1, K + CLAP_STEP);
+  newTarget();
+  lastActivity = now;
+
+  // Den sista klappen stänger musiken och startar finalen nästan omedelbart.
+  if (previousK < 0.999 && K >= 0.999) {
+    finalClap = true;
+    resetAt = now + FINALE_SECS;
+    fallAt = now + 0.08;
+    rings = [];
+    stopMusicForFinale();
+  }
+}
+
+lastClapT = now;
+
+if (!finalClap) {
+  thud();
+  rave();
+
+  const numRings = 1 + floor(K * 4);
+  for (let i = 0; i < numRings; i++) {
+    rings.push({ t0: now + i * 0.09, hue: HUES[i % 5] });
+  }
+
+  fallAt = now + (K < 0.02 ? 0 : 0.2 + K * 1.3);
+}
+}
+
+
+function newTarget() {
+  // Alla dessa vinklar ger ett tydligt fel håll vid full nivå
+  target = random([PI, -PI, 2.4, -2.4, 2.0, -2.0]);
+}
+
+function warn() {
+  flash = 1;
+  warnSound();
+}
+
+// Återställer världen till sitt ursprungliga tillstånd.
+function resetCycle(now) {
+  K = 0;
+  fallAt = null;
+  resetAt = null;
+
+  finaleBurstStarted = false;
+finaleBangAt = null;
+finaleFlashAt = null;
+finaleFadeAt = null;
+worldDead = false;
+
+  musicActive = false;
+  musicStep = 0;
+  musicNextStepAt = 0;
+
+  if (audioCtx && musicBus) {
+    const t = audioCtx.currentTime;
+    musicBus.gain.cancelScheduledValues(t);
+    musicBus.gain.setValueAtTime(1, t);
+  }
+
+  recoverAt = now;
+
+  for (const p of particles) {
+    if (p.state === 'falling') {
+      p.state = 'floating';
+      p.vx = 0;
+      p.vy = 0;
+    }
+  }
+
+  rings = [];
+  sparks = [];
+}
+
+function setMode(newMode) {
+  if (newMode === mode) return;
+
+  const now = millis() / 1000;
+  resetCycle(now);
+  lastActivity = now;
+  mode = newMode;
+}
+
+// Kollar varje bildruta om något ska hända: fall, final eller inaktivitet.
+function updateDirector(now) {
+  if (fallAt !== null && now >= fallAt) {
+    releaseFall(now);
+  }
+
+  if (mode !== 'user') return;
+
+  // Efter finalen återställs världen.
+  if (resetAt !== null && now >= resetAt) {
+    resetCycle(now);
+
+  // Återställ även om användaren slutar klappa.
+} else if (!finaleBurstStarted && resetAt === null && K > 0 && now - lastActivity > IDLE_RESET) {
+    resetCycle(now);
+  }
+}
+
+
+/* ---------- 6. MIKROFON (klappdetektering) ---------- */
+async function startAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // master = huvudvolym. Limitern (compressor) ser till att det aldrig blir för högt.
+  master = audioCtx.createGain();
+  master.gain.value = outVol;
+  musicBus = audioCtx.createGain();
+musicBus.gain.value = 1;
+musicBus.connect(master);
+  const limiter = audioCtx.createDynamicsCompressor();
+  limiter.threshold.value = -8;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.003;
+  master.connect(limiter);
+  limiter.connect(audioCtx.destination);
+
+  // Glitterkanal: torr signal + lite efterklang (ett kort "rum" av brus som klingar ut).
+  // Efterklangen gör att de små ljuden hänger kvar en stund i luften i stället för att låta som klick.
+  glitterBus = audioCtx.createGain();
+  const reverb = audioCtx.createConvolver();
+  const irLength = floor(audioCtx.sampleRate * 1.1);
+  const ir = audioCtx.createBuffer(2, irLength, audioCtx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const irData = ir.getChannelData(ch);
+    for (let i = 0; i < irLength; i++) irData[i] = random(-1, 1) * pow(1 - i / irLength, 3);
+  }
+  reverb.buffer = ir;
+  const wet = audioCtx.createGain();
+  wet.gain.value = 0.35;                          // hur mycket efterklang
+  glitterBus.connect(master);                     // torr signal
+  glitterBus.connect(reverb);
+  reverb.connect(wet);
+  wet.connect(master);                            // våt signal
+
+  // 0,2 sekunder vitt brus, används till hi-hat
+  const noiseLength = floor(audioCtx.sampleRate * 0.2);
+  noiseBuffer = audioCtx.createBuffer(1, noiseLength, audioCtx.sampleRate);
+  const noiseData = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < noiseLength; i++) noiseData[i] = random(-1, 1);
+
+  // 1,2 sekunder brus till "svischet" när partiklarna släpps
+  const shimmerLength = floor(audioCtx.sampleRate * 1.2);
+  shimmerBuffer = audioCtx.createBuffer(1, shimmerLength, audioCtx.sampleRate);
+  const shimmerData = shimmerBuffer.getChannelData(0);
+  for (let i = 0; i < shimmerLength; i++) shimmerData[i] = random(-1, 1);
+
+  // Be om mikrofonen. Allt automatiskt "fusk" i webbläsaren stängs av så att klapp syns tydligt.
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+    micBuffer = new Float32Array(analyser.fftSize);   // här hämtas ljudet varje bildruta
+    micState = 'på';
+  } catch (e) {
+    micState = 'AV (' + e.name + ') – använd mellanslag';
+  }
+}
+
+function updateMic(now) {
+  if (!analyser) return;
+
+  // Ljudnivå (rms) = roten ur medelvärdet av ljudvärdena i kvadrat
+  analyser.getFloatTimeDomainData(micBuffer);
+  let sumSquares = 0;
+  for (const v of micBuffer) sumSquares += v * v;
+  rms = sqrt(sumSquares / micBuffer.length);
+
+  // Adaptiv tröskel: medelvärde + 3 standardavvikelser av de senaste nivåerna
+  const n = max(1, levelHistory.length);
+  let mean = 0;
+  for (const v of levelHistory) mean += v;
+  mean /= n;
+  let variance = 0;
+  for (const v of levelHistory) variance += (v - mean) * (v - mean);
+  const sd = sqrt(variance / n);
+  thr = max(0.05 / sens, mean + 3 * sd + 0.01);
+
+  // Klapp = nivån är över tröskeln och har stigit snabbt sedan förra bildrutan
+  if (rms > thr && rms > lastRms * 1.6 && now > clapLock) {
+    micClapAt = now;            // används av ljudmätaren för att visa att ett klapp registrerades
+    micClapLevel = rms;
+    clap();
+    clapLock = now + 1.2 + K * 1.0;
+  }
+
+  // Ljudstapeln följer nivån direkt uppåt men sjunker långsamt, så att korta klapp hinner synas.
+  micShow = max(rms, micShow * 0.85);
+  if (rms >= micPeak) { micPeak = rms; micPeakAt = now; }
+  else if (now - micPeakAt > 1) micPeak *= 0.95;
+
+  lastRms = rms;
+  levelHistory.push(rms);
+  if (levelHistory.length > 120) levelHistory.shift();      // spara bara de 120 senaste
+}
+
+
+/* ---------- 7. LJUD (Web Audio, inga bibliotek) ---------- */
+
+// Spelar en ton som klingar ut. Returnerar oscillatorn så att man kan lägga till en glidning efteråt.
+// Spelar en ton som klingar ut.
+// destination gör att ljudet kan skickas till musikkanalen eller huvudkanalen.
+function playTone(type, freq, volume, length, start = audioCtx.currentTime, destination = master) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, start);
+  gain.gain.setValueAtTime(volume, start);
+  gain.gain.exponentialRampToValueAtTime(0.001, start + length);
+
+  osc.connect(gain);
+  gain.connect(destination);
+
+  osc.start(start);
+  osc.stop(start + length + 0.05);
+
+  return osc;
+}
+
+// Dunk vid klapp (och en rave-stab när världen börjar bli fel)
+function thud() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = playTone('sine', 150 * (1 + K * 2.5), 0.35, 0.35, t);
+  osc.frequency.exponentialRampToValueAtTime(45, t + 0.25);        // tonen glider nedåt
+  if (K > 0.2) {
+    playTone('sawtooth', 220 * (1 + floor(K * 5) * 0.5), 0.05, 0.45, t + 0.05);
+  }
+}
+
+// ---- Glitter som faller ----
+// Ett enda litet glitterpling: två rena toner där den andra är "oharmonisk" (2,76 gånger högre),
+// vilket är det som gör att det låter som metall/folie och inte som en dator-ton.
+// Varje pling får slumpad tonhöjd, längd, volym och plats i stereo.
+function glitterPing(t, vol, freq) {
+  const gain = audioCtx.createGain();
+  let out = gain;
+  if (audioCtx.createStereoPanner) {
+    const pan = audioCtx.createStereoPanner();
+    pan.pan.value = random(-0.8, 0.8);            // vänster-höger
+    gain.connect(pan);
+    out = pan;
+  }
+  out.connect(glitterBus);
+
+  const decay = random(0.04, 0.16);               // hur länge plinget klingar
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(vol, t + 0.002);        // mycket snabb attack
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+
+  const o1 = audioCtx.createOscillator();
+  o1.type = 'sine';
+  o1.frequency.setValueAtTime(freq, t);
+  o1.frequency.exponentialRampToValueAtTime(freq * 0.97, t + decay);   // glider lite nedåt
+  o1.connect(gain);
+  o1.start(t);
+  o1.stop(t + decay + 0.02);
+
+  if (freq * 2.76 < 18000) {                      // överton (hoppar över om den blir för hög)
+    const o2 = audioCtx.createOscillator();
+    const g2 = audioCtx.createGain();
+    o2.type = 'sine';
+    o2.frequency.value = freq * 2.76 * random(0.97, 1.03);
+    g2.gain.value = 0.4;
+    o2.connect(g2);
+    g2.connect(gain);
+    o2.start(t);
+    o2.stop(t + decay + 0.02);
+  }
+}
+
+// Knastrande folie: ett mycket kort, filtrerat brus
+function crinkle(t) {
+  const src = audioCtx.createBufferSource();
+  const filter = audioCtx.createBiquadFilter();
+  const gain = audioCtx.createGain();
+  src.buffer = noiseBuffer;
+  filter.type = 'bandpass';
+  filter.frequency.value = random(5500, 9500);
+  filter.Q.value = 2;
+  gain.gain.setValueAtTime(random(0.02, 0.05), t);
+  gain.gain.exponentialRampToValueAtTime(0.0005, t + random(0.02, 0.05));
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(glitterBus);
+  src.start(t, random(0, 0.15), 0.06);            // börja på en slumpad plats i bruset
+}
+
+// Anropas när partiklar landar. "count" = hur många som landade i bildrutan:
+// fler partiklar = fler pling, men aldrig exakt i takt.
+function tick(count = 1) {
+  if (!audioCtx || !glitterBus) return;
+  const t0 = audioCtx.currentTime;
+  const n = min(5, 1 + floor(count / 20));
+  for (let i = 0; i < n; i++) {
+    const t = t0 + random(0, 0.045);              // utspritt i tid
+    const heavy = random() < 0.15;                // ibland en lite tyngre, lägre droppe
+    const freq = heavy ? random(1400, 2400) : random(2800, 8200) * (1 + 0.15 * K);
+    glitterPing(t, random(0.01, 0.035) * (heavy ? 1.3 : 1), freq);
+  }
+  if (random() < 0.5) crinkle(t0 + random(0, 0.045));
+}
+
+// Ett kort, ljust svisch när partiklarna släpps: brus som glider nedåt i tonhöjd
+function fallShimmer() {
+  if (!audioCtx || !glitterBus || !shimmerBuffer) return;
+  const t = audioCtx.currentTime;
+  const src = audioCtx.createBufferSource();
+  const filter = audioCtx.createBiquadFilter();
+  const gain = audioCtx.createGain();
+  src.buffer = shimmerBuffer;
+  filter.type = 'bandpass';
+  filter.Q.value = 1.2;
+  filter.frequency.setValueAtTime(9000, t);
+  filter.frequency.exponentialRampToValueAtTime(3000, t + 0.9);   // glider nedåt, som när det faller
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.035, t + 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(glitterBus);
+  src.start(t);
+  src.stop(t + 0.95);
+}
+
+// Finalens ljud: en stor, tung gravitationssmäll med tydlig attack och kort metallisk svans.
+function finaleBang() {
+  if (!audioCtx) return;
+
+  const t = audioCtx.currentTime;
+
+  // Djup basstöt.
+  const sub = audioCtx.createOscillator();
+  const subGain = audioCtx.createGain();
+
+  sub.type = 'sine';
+  sub.frequency.setValueAtTime(62, t);
+  sub.frequency.exponentialRampToValueAtTime(24, t + 1.1);
+
+  subGain.gain.setValueAtTime(0.0001, t);
+  subGain.gain.exponentialRampToValueAtTime(1.0, t + 0.012);
+  subGain.gain.exponentialRampToValueAtTime(0.001, t + 1.35);
+
+  sub.connect(subGain);
+  subGain.connect(master);
+
+  sub.start(t);
+  sub.stop(t + 1.38);
+
+  // En kort kroppslig smäll ovanpå subbasen.
+  const thump = audioCtx.createOscillator();
+  const thumpGain = audioCtx.createGain();
+
+  thump.type = 'triangle';
+  thump.frequency.setValueAtTime(172, t + 0.006);
+  thump.frequency.exponentialRampToValueAtTime(38, t + 0.34);
+
+  thumpGain.gain.setValueAtTime(0.0001, t + 0.006);
+  thumpGain.gain.exponentialRampToValueAtTime(0.78, t + 0.014);
+  thumpGain.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+
+  thump.connect(thumpGain);
+  thumpGain.connect(master);
+
+  thump.start(t + 0.006);
+  thump.stop(t + 0.45);
+
+  // Kort metalliskt anslag.
+  if (noiseBuffer) {
+    const crack = audioCtx.createBufferSource();
+    const filter = audioCtx.createBiquadFilter();
+    const crackGain = audioCtx.createGain();
+
+    crack.buffer = noiseBuffer;
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1850, t);
+    filter.Q.value = 0.75;
+
+    crackGain.gain.setValueAtTime(0.0001, t);
+    crackGain.gain.exponentialRampToValueAtTime(0.40, t + 0.005);
+    crackGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+
+    crack.connect(filter);
+    filter.connect(crackGain);
+    crackGain.connect(master);
+
+    crack.start(t);
+    crack.stop(t + 0.24);
+  }
+
+  // Ljus resonans som klingar ut i glitterkanalen.
+  if (glitterBus) {
+    const ring = audioCtx.createOscillator();
+    const ringGain = audioCtx.createGain();
+
+    ring.type = 'sine';
+    ring.frequency.setValueAtTime(245, t + 0.035);
+    ring.frequency.exponentialRampToValueAtTime(132, t + 0.9);
+
+    ringGain.gain.setValueAtTime(0.0001, t + 0.035);
+    ringGain.gain.exponentialRampToValueAtTime(0.14, t + 0.085);
+    ringGain.gain.exponentialRampToValueAtTime(0.0001, t + 1.05);
+
+    ring.connect(ringGain);
+    ringGain.connect(glitterBus);
+
+    ring.start(t + 0.035);
+    ring.stop(t + 1.08);
+  }
+}
+
+// Två pip som varnar vid första felet
+function warnSound() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  for (let i = 0; i < 2; i++) {
+    playTone('square', 880, 0.04, 0.07, t + i * 0.12);
+  }
+}
+
+// En enda lugn ton när allt återställs
+function calmSound() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = 220;
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.18, t + 0.4);           // tonen fadar in
+  gain.gain.exponentialRampToValueAtTime(0.0005, t + 2.5);         // och sedan ut
+  osc.connect(gain);
+  gain.connect(master);
+  osc.start(t);
+  osc.stop(t + 2.6);
+}
+
+/* Rave-lager: arpeggio i moll-pentatonik, plus kick och hi-hat när K > 0,6.
+   Tempot och tonhöjden stiger med K. */
+const SCALE = [0, 3, 5, 7, 10, 12, 15, 17];      // toner (i halvtonssteg) över grundtonen
+
+function kick(t, volume = 0.55, timeScale = 1, pitchScale = 1) {
+  const osc = playTone(
+    'sine',
+    130 * pitchScale,
+    volume,
+    0.22 * timeScale,
+    t,
+    musicBus || master
+  );
+
+  osc.frequency.exponentialRampToValueAtTime(
+    40 * pitchScale,
+    t + 0.18 * timeScale
+  );
+}
+
+function hat(t, volume = 0.06, timeScale = 1, pitchScale = 1) {
+  const source = audioCtx.createBufferSource();
+  const filter = audioCtx.createBiquadFilter();
+  const gain = audioCtx.createGain();
+
+  source.buffer = noiseBuffer;
+  source.playbackRate.setValueAtTime(pitchScale, t);
+
+  filter.type = 'highpass';
+  filter.frequency.value = 7000 * pitchScale;
+
+  gain.gain.setValueAtTime(volume, t);
+  gain.gain.exponentialRampToValueAtTime(
+    0.001,
+    t + 0.05 * timeScale
+  );
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(musicBus || master);
+
+  source.start(t);
+  source.stop(t + 0.06 * timeScale);
+}
+
+function playArpNote(freq, t, volume = 0.10, timeScale = 1, pitchScale = 1) {
+  const osc = audioCtx.createOscillator();
+  const filter = audioCtx.createBiquadFilter();
+  const gain = audioCtx.createGain();
+
+  osc.type = 'sawtooth';
+  osc.frequency.value = freq * pitchScale;
+
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(
+    (600 + K * 3500) * pitchScale,
+    t
+  );
+
+  filter.frequency.exponentialRampToValueAtTime(
+    200 * pitchScale,
+    t + 0.14 * timeScale
+  );
+
+  gain.gain.setValueAtTime(volume, t);
+  gain.gain.exponentialRampToValueAtTime(
+    0.001,
+    t + 0.15 * timeScale
+  );
+
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(musicBus || master);
+
+  osc.start(t);
+  osc.stop(t + 0.17 * timeScale);
+}
+
+function rave() {
+  // En liten tonaccent vid klappen.
+  // Det återkommande beatet sköts av updateMusic().
+
+  if (!audioCtx || K < 0.3) return;
+
+  const t = audioCtx.currentTime + 0.035;
+  const root = 110 * pow(2, (floor(K * 4) * 2) / 12);
+  const semitones = random(SCALE);
+
+  playArpNote(
+    root * pow(2, semitones / 12),
+    t,
+    0.045
+  );
+}
+
+// Schemalägger ett enkelt 4/4-beat som växer fram när K stiger.
+// Ljuden läggs på ljudklockan med kort framförhållning så att rytmen blir jämn.
+function scheduleMusicStep(step, t) {
+  const intensity = constrain((K - 0.25) / 0.75, 0, 1);
+  const root = 110 * pow(2, (floor(K * 3) * 2) / 12);
+
+  // En liten melodisk figur kommer först och får fler toner ju högre K blir.
+  const melody = [0, null, 3, null, 5, 7, null, 10, 7, null, 5, null, 3, null, 10, null];
+  const degree = melody[step];
+
+  // Melodin (samma arpeggioröst som resten av musiken) börjar redan på nivå 1, men med få toner,
+  // lite lägre volym och längre utklingning. När K stiger fylls fler toner på, tills hela melodin spelas vid K = 0,25.
+  // Då fortsätter allt som förut. Inga toner försvinner, de bara blir fler.
+  //   nivå 1 (K 0,1): steg 0 och 8 (grundton och kvint)
+  //   nivå 2 (K 0,2): steg 4, 12 och 14 kommer till
+  //   från K 0,25:    hela melodin
+  if (K >= MUSIC_START_K - 0.001 && degree !== null) {
+    let melodyOn = false;
+    if (K >= 0.25) melodyOn = true;
+    else if (K >= 0.2 - 0.001) melodyOn = [0, 4, 8, 12, 14].includes(step);
+    else melodyOn = (step === 0 || step === 8);
+
+    if (melodyOn) {
+      const rise = constrain((K - MUSIC_START_K) / (0.25 - MUSIC_START_K), 0, 1);   // 0 på nivå 1, 1 vid K = 0,25
+      const noteVolume = K < 0.25 ? lerp(0.014, 0.018, rise) : 0.018 + intensity * 0.035;
+      const ring = lerp(1.7, 1, rise);                                                // längre utklingning i början
+      playArpNote(root * pow(2, degree / 12), t, noteVolume, ring);
+    }
+  }
+
+  // Bastrumma på varje fjärdedel när pulsen har etablerats.
+  if (K >= 0.4 && step % 4 === 0) {
+  musicBeatAt = t;
+  kick(t, (0.10 + intensity * 0.16));
+}
+
+  // Hi-hat kommer in senare och håller sig diskret.
+  if (K >= 0.58 && (step % 4 === 2)) {
+    hat(t, (0.012 + intensity * 0.022));
+  }
+
+  // Ett extra ljust lager först när kaoset verkligen är högt.
+  if (K >= 0.78 && (step === 7 || step === 15)) {
+    playArpNote(root * 2, t, (0.018 + intensity * 0.018));
+  }
+}
+
+function stopMusicForFinale() {
+  musicActive = false;
+  musicStep = 0;
+
+  if (!audioCtx || !musicBus) return;
+
+  const t = audioCtx.currentTime;
+  musicBus.gain.cancelScheduledValues(t);
+  musicBus.gain.setValueAtTime(max(0.0001, musicBus.gain.value), t);
+  musicBus.gain.exponentialRampToValueAtTime(0.0001, t + 0.075);
+}
+
+// Tempot börjar lugnt på nivå 1 och går mjukt över i det ursprungliga tempot (88 + 58 * K) vid K = 0,25.
+function musicBpm() {
+  return K < 0.25
+    ? lerp(60, 88 + 58 * 0.25, constrain((K - MUSIC_START_K) / (0.25 - MUSIC_START_K), 0, 1))
+    : 88 + 58 * K;
+}
+
+function updateMusic() {
+  if (!audioCtx) return;
+
+  if (resetAt !== null || finaleBurstStarted || worldDead) {
+    musicActive = false;
+    return;
+  }
+
+  const audioNow = audioCtx.currentTime;
+
+  if (K < MUSIC_START_K - 0.001) {
+    musicActive = false;
+    musicStep = 0;
+    musicNextStepAt = audioNow + 0.05;
+    return;
+  }
+
+  if (!musicActive) {
+    musicActive = true;
+    musicStep = 0;
+    musicNextStepAt = audioNow + 0.03;
+  }
+
+  const bpm = musicBpm();
+  const stepDuration = 60 / bpm / 4;
+  const scheduleUntil = audioNow + 0.12;
+
+  while (musicNextStepAt < scheduleUntil) {
+    scheduleMusicStep(musicStep, musicNextStepAt);
+    musicNextStepAt += stepDuration;
+    musicStep = (musicStep + 1) % 16;
+  }
+}
+
+/* ---------- 8. RITNING ---------- */
+function draw() {
+  const frameDt = min(deltaTime / 1000, 0.033);
+  const now = millis() / 1000;
+  const dt = frameDt;
+
+  updateMic(now);
+  updateDirector(now);
+
+  // Uppdatera världen bara så länge den lever.
+  if (!worldDead) {
+    updateField(now);
+    updateParticles(dt, now);
+    updateMusic();
+
+    if (!finaleBurstStarted && landedThisFrame > 0 && now > tickAt) {
+      tick(landedThisFrame);
+      tickAt = now + 0.05;
+    }
+  }
+
+  // Render måste fortsätta även när världen är död,
+  // så att den svarta övertoningen kan bli färdig.
+  render(now, dt);
+
+  if (worldDead) {
+    hudEl.textContent = '';
+    boardEl.textContent = '';
+  } else {
+    updateHud();
+  }
+}
+
+/* ---------- 8b. GRAFIK: GLÖDBILDER, LJUSSTRÅLAR OCH DAMM ----------
+   Den här delen ändrar bara HUR partiklarna ritas, inte hur de beter sig.
+   Idén: riktiga partiklar (damm, gnistor) är mjuka, olika stora, olika långt bort
+   och fångar ljus på olika sätt. Därför får varje partikel:
+   - djup (depth): långt bort = mindre och dunklare, nära = något större och ljusare
+   - tindrande och sällsynta ljusglimtar (som glitter som fångar ljus)
+   - en het glöd precis när den landar, som sedan svalnar
+   Bilderna (sprites) ritas upp EN gång och återanvänds, vilket är mycket snabbare
+   än att räkna ut en gradient för varje partikel varje bildruta. */
+
+const gfxCache = new Map();                       // sparar färdiga bilder så att de bara skapas en gång
+function cachedImage(key, make) {
+  if (!gfxCache.has(key)) gfxCache.set(key, make());
+  return gfxCache.get(key);
+}
+function snapHue(h, step) {                       // avrundar färgen så att cachen inte växer i det oändliga
+  return (round(h / step) * step) % 360;
+}
+
+// Glitterpartikel: het, nästan vit kärna och ett mjukt färgat sken som tonar ut
+function glowSprite(hue) {
+  const h = snapHue(hue, 5);
+  return cachedImage('g' + h, () => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0,    `hsla(${h},100%,96%,1)`);
+    grad.addColorStop(0.07, `hsla(${h},100%,80%,0.95)`);
+    grad.addColorStop(0.2,  `hsla(${h},100%,60%,0.40)`);
+    grad.addColorStop(0.5,  `hsla(${h},100%,50%,0.10)`);
+    grad.addColorStop(1,    `hsla(${h},100%,50%,0)`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    return c;
+  });
+}
+
+// Ljusstråle: ett smalt ljus uppe som breder ut sig nedåt (flera mjuka lager ger mjuka kanter)
+function beamSprite(hue) {
+  const h = snapHue(hue, 10);
+  return cachedImage('beam' + h, () => {
+    const W = 128, H = 256;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.fillStyle = `hsl(${h},100%,62%)`;
+    g.globalAlpha = 0.13;
+    for (let k = 0; k < 8; k++) {
+      const s = 1 - k / 8;                        // varje lager är smalare än det förra
+      g.beginPath();
+      g.moveTo(W / 2 - 5 * s, 0);
+      g.lineTo(W / 2 + 5 * s, 0);
+      g.lineTo(W / 2 + (W / 2) * s, H);
+      g.lineTo(W / 2 - (W / 2) * s, H);
+      g.closePath();
+      g.fill();
+    }
+    // Tona ut strålen längs sin längd
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'destination-in';
+    const fade = g.createLinearGradient(0, 0, 0, H);
+    fade.addColorStop(0,   'rgba(0,0,0,1)');
+    fade.addColorStop(0.6, 'rgba(0,0,0,0.4)');
+    fade.addColorStop(1,   'rgba(0,0,0,0)');
+    g.fillStyle = fade;
+    g.fillRect(0, 0, W, H);
+    return c;
+  });
+}
+
+// Mjuk kantglöd som ligger an mot en yta (används för högar och golvsken)
+// Lodrät: genomskinlig upptill, stark nedtill. Vågrät: genomskinlig till vänster, stark till höger.
+function edgeGlow(hue, horizontal) {
+  const h = snapHue(hue, 10);
+  return cachedImage((horizontal ? 'eh' : 'ev') + h, () => {
+    const c = document.createElement('canvas');
+    c.width  = horizontal ? 64 : 4;
+    c.height = horizontal ? 4 : 64;
+    const g = c.getContext('2d');
+    const grad = horizontal ? g.createLinearGradient(0, 0, 64, 0)
+                            : g.createLinearGradient(0, 0, 0, 64);
+    grad.addColorStop(0,   `hsla(${h},100%,60%,0)`);
+    grad.addColorStop(0.7, `hsla(${h},100%,60%,0.25)`);
+    grad.addColorStop(1,   `hsla(${h},100%,70%,0.9)`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, c.width, c.height);
+    return c;
+  });
+}
+
+// Gnistor och dammpuffar som flyger upp när något landar hårt (bara grafik, påverkar inget annat)
+let sparks = [];
+
+function spawnSparks(p) {
+  if (sparks.length > 700 || random() > 0.55) return;
+  const n = 1 + (p.lastSpeed > 900 ? 1 : 0) + (p.lastSpeed > 1600 ? 1 : 0);
+  // Ytans normal = riktningen bort från ytan där partikeln landade
+  let nx = 0, ny = -1;
+  if (p.surface === 'ceiling')    { nx = 0;  ny = 1; }
+  else if (p.surface === 'right') { nx = -1; ny = 0; }
+  else if (p.surface === 'left')  { nx = 1;  ny = 0; }
+  for (let k = 0; k < n; k++) {
+    const v = p.lastSpeed * random(0.07, 0.18);          // studsar upp med en del av fallfarten
+    const side = random(-1, 1) * p.lastSpeed * 0.08;     // och lite åt sidan
+    const life = random(0.3, 0.8);
+    sparks.push({
+      x: p.x, y: p.y,
+      vx: nx * v - ny * side,
+      vy: ny * v + nx * side,
+      ax: p.dirX * G * 0.5,                              // faller tillbaka åt samma håll som partikeln föll
+      ay: p.dirY * G * 0.5,
+      life: life, max: life,
+      size: random(2.5, 6) * p.depth,
+      hue: p.hue,
+    });
+  }
+}
+
+// Hur mycket en partikel lyses upp av strålarna (0 utanför, 1 i mitten av strålen)
+function beamBoost(p, beams) {
+  let best = 0;
+  for (const b of beams) {
+    const rx = p.x - b.sx, ry = p.y - b.sy;
+    const along = rx * b.dx + ry * b.dy;                 // hur långt ut i strålen
+    if (along < 0) continue;
+    const perp = abs(rx * b.dy - ry * b.dx);             // avstånd från strålens mittlinje
+    const half = 6 + along * b.slope;                    // strålen blir bredare längre bort
+    if (perp < half) {
+      const v = 1 - perp / half;
+      best = max(best, v * v * max(0, 1 - along / b.len));
+    }
+  }
+  return best;
+}
+
+// Ritar glöden vid högarna på golv, tak och väggar
+function drawPileGlow(ctx, hue, fade) {
+  const vg = edgeGlow(hue, false);
+  const hg = edgeGlow(hue, true);
+  const lift = 14;                                       // glöden når lite över högens topp
+
+  for (let c = 0; c < COLS; c++) {
+    const f = piles.floor[c], t = piles.ceiling[c];
+    if (f > 2) {
+      ctx.globalAlpha = min(0.35, f / 90 * 0.35) * fade;
+      ctx.drawImage(vg, (c - 0.5) * cellW, floorY - f - lift, cellW * 2, f + lift);
+    }
+    if (t > 2) {
+      ctx.globalAlpha = min(0.35, t / 90 * 0.35) * fade;
+      ctx.save();
+      ctx.scale(1, -1);                                  // spegla lodrätt så att glöden ligger mot taket
+      ctx.drawImage(vg, (c - 0.5) * cellW, -(t + lift), cellW * 2, t + lift);
+      ctx.restore();
+    }
+  }
+  for (let r = 0; r < ROWS; r++) {
+    const rt = piles.right[r], lf = piles.left[r];
+    if (rt > 2) {
+      ctx.globalAlpha = min(0.35, rt / 90 * 0.35) * fade;
+      ctx.drawImage(hg, width - rt - lift, (r - 0.5) * cellH, rt + lift, cellH * 2);
+    }
+    if (lf > 2) {
+      ctx.globalAlpha = min(0.35, lf / 90 * 0.35) * fade;
+      ctx.save();
+      ctx.scale(-1, 1);                                  // spegla vågrätt så att glöden ligger mot vänster vägg
+      ctx.drawImage(hg, -(lf + lift), (r - 0.5) * cellH, lf + lift, cellH * 2);
+      ctx.restore();
+    }
+  }
+}
+
+function render(now, dt) {
+  const ctx = drawingContext;                    // p5:s inbyggda "pensel" (canvas 2D)
+  const pulse = exp(-(now - lastClapT) * 4);     // 1 vid klapp, klingar sedan av mjukt
+  const shift = K > 0.15 ? now * (20 + 140 * K * K) : 0;   // färgerna roterar snabbare ju högre K
+  const beatAge = audioCtx ? audioCtx.currentTime - musicBeatAt : 99;
+const beatPulse = musicActive && beatAge >= 0 && beatAge < 0.22
+  ? exp(-beatAge * 11)
+  : 0;
+  const finaleAge = finaleBangAt === null ? 99 : now - finaleBangAt;
+const finalePulse = finaleAge >= 0 && finaleAge < 1.45 ? exp(-finaleAge * 3.0) : 0;
+const finaleFlash = finaleAge >= 0 && finaleAge < 0.16 ? (1 - finaleAge / 0.16) : 0;
+
+  // Bakgrund med "svans": högre K = längre sudd
+  const fade = 0.42 - 0.30 * K;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = `rgba(6,4,14,${fade})`;
+  ctx.fillRect(0, 0, width, height);
+  // OBS: eftersom bakgrunden bara suddas lite varje bildruta bygger allt ljus på sig självt.
+  // Därför multipliceras genomskinligheten för glöd och strålar med "fade", så att ljusstyrkan
+  // blir densamma oavsett hur långa svansarna är.
+
+  // Mjuk färgpuls vid klapp
+  if (K > 0.35 && pulse > 0.02) {
+    ctx.fillStyle = `hsla(${(HUES[0] + shift) % 360},100%,50%,${0.12 * K * pulse})`;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  // Svag färgpuls i takt med bastrumman.
+if (beatPulse > 0.01) {
+  ctx.fillStyle = `hsla(${(185 + shift) % 360},100%,65%,${0.055 * K * beatPulse})`;
+  ctx.fillRect(0, 0, width, height);
+}
+
+  // Skakning vid klapp (allt som ritas mellan save och restore skakar)
+  ctx.save();
+  const shake = K * 8 * pulse + finalePulse * 17 + beatPulse * 2.2;
+  if (shake > 0.3) ctx.translate(random(-shake, shake), random(-shake, shake));
+
+  // Golvet (verket handlar om att vi litar på att det bär)
+  const flicker = K > 0.25 ? (random() < 0.15 ? 0.15 : 0.7) : 0.6;
+  ctx.fillStyle = K > 0.25 ? `hsla(${(185 + shift) % 360},100%,70%,${flicker})`
+                           : `rgba(150,255,235,${flicker})`;
+  ctx.fillRect(0, floorY, width, 2);
+
+  // I användarläge syns även tak och väggar svagt
+  if (mode === 'user') {
+    ctx.fillStyle = 'rgba(25,230,255,0.12)';
+    ctx.fillRect(0, 0, width, 2);                // tak
+    ctx.fillRect(0, 0, 2, floorY);               // vänster vägg
+    ctx.fillRect(width - 2, 0, 2, floorY);       // höger vägg
+  }
+
+  // Från och med här läggs ljus på ljus ("lighter" lägger ihop färgerna = neonglöd)
+  ctx.globalCompositeOperation = 'lighter';
+  const floorHue = (185 + shift) % 360;
+
+  // Golvets sken: ett svagt ljus precis ovanför golvlinjen och en blank yta strax under
+  ctx.globalAlpha = 0.10 * fade;
+  ctx.drawImage(edgeGlow(floorHue, false), 0, floorY - 46, width, 46);
+  ctx.save();
+  ctx.translate(0, floorY);
+  ctx.scale(1, -1);
+  ctx.globalAlpha = 0.07 * fade;
+  ctx.drawImage(edgeGlow(floorHue, false), 0, -38, width, 38);
+  ctx.restore();
+
+// Strålkastardata behövs även när själva ljuset är släckt.
+const beams = [];
+
+// Två ljusstrålar uppifrån.
+for (let i = 0; i < 2; i++) {
+  const dirSign = i === 0 ? 1 : -1;
+  const sway = sin(now * 0.17 * (1 + 2 * K) + i * 2.1) * 0.12
+             + K * 0.3 * sin(now * (0.6 + 2 * K) + i * 1.7);
+  const th = dirSign * 0.38 + sway;
+  const len = height * 1.5;
+
+  beams.push({
+    sx: width * (i === 0 ? 0.16 : 0.84),
+    sy: -60,
+    dx: sin(th),
+    dy: cos(th),
+    th: th,
+    len: len,
+    slope: (width * 0.25) / len * 0.85,
+    hue: ((i === 0 ? 185 : 320) + shift) % 360,
+  });
+}
+
+// Rita bara själva ljusstrålarna före finalens BANG.
+if (finaleBangAt === null) {
+  for (const b of beams) {
+    ctx.save();
+    ctx.translate(b.sx, b.sy);
+    ctx.rotate(-b.th);
+    ctx.globalAlpha = (0.14 + 0.16 * K) * fade;
+    ctx.drawImage(
+      beamSprite(b.hue),
+      -width * 0.25,
+      0,
+      width * 0.5,
+      b.len
+    );
+    ctx.restore();
+  }
+}
+
+  // Glöd runt högarna
+  drawPileGlow(ctx, floorHue, fade);
+
+  // Förbered bilderna för den här bildrutan (en skarp och en suddig per färg)
+  const sprites = HUES.map(h => glowSprite((h + shift) % 360));
+  const cyanS = glowSprite((185 + shift) % 360);
+  const magS  = glowSprite((320 + shift) % 360);
+  const sizeBoost = 1 + K * 0.8 * pulse;         // partiklarna pulserar i storlek vid klapp
+  const MAX_SIZE = 20;                           // största tillåtna storlek i pixlar
+
+  // Partiklar
+  for (const p of particles) {
+    const resting = p.state === 'resting';
+
+    // Följ partikelns tillstånd (utan att ändra det): vid landning blir den het och kastar gnistor
+    if (resting) {
+      if (!p.wasResting) {
+        p.wasResting = true;
+        p.heat = 1;
+        if (p.lastSpeed > 350) spawnSparks(p);
+      }
+    } else {
+      p.wasResting = false;
+      if (p.state === 'falling') p.lastSpeed = sqrt(p.vx * p.vx + p.vy * p.vy);
+    }
+    if (p.heat > 0) p.heat = max(0, p.heat - dt * 1.1);   // glöden svalnar på ungefär en sekund
+
+    // Ljus: tindrar mjukt, har sällsynta glimtar och lyses upp i ljusstrålarna
+    const twinkle = 0.78 + 0.22 * sin(now * (1.5 + p.depth * 3.5) + p.phase * 5);
+    const glint = pow(max(0, sin(now * 0.9 + p.phase * 13)), 48);
+    const boost = beamBoost(p, beams);
+    let a = p.depth * twinkle * (resting ? 0.38 : 0.95) * (1 + boost * 1.6 + glint * 2.2);
+    // Storlek: lite olika, men med ett tak (MAX_SIZE) så att inget blir en stor bubbla
+    const s = min(MAX_SIZE, max(5, p.size * p.depth * 18) * sizeBoost * (1 + glint * 0.5 + boost * 0.15));
+
+    const img = sprites[p.hue];
+
+    // Rörelsestrimma: snabbt fallande partiklar får en kort svans
+    if (p.state === 'falling' && p.lastSpeed > 250) {
+      const steps = p.lastSpeed > 900 ? 3 : 2;
+      for (let k = 1; k <= steps; k++) {
+        const back = 0.0075 * k;
+        const sk = s * (1 - 0.12 * k);
+        ctx.globalAlpha = min(1, a * 0.45 / k);
+        ctx.drawImage(img, p.x - p.vx * back - sk / 2, p.y - p.vy * back - sk / 2, sk, sk);
+      }
+    }
+
+    ctx.globalAlpha = min(1, a);
+    ctx.drawImage(img, p.x - s / 2, p.y - s / 2, s, s);
+
+    // Het glöd precis efter landning
+    if (p.heat > 0.05) {
+      const hs = s * 2.2;
+      ctx.globalAlpha = min(1, p.heat * 0.7 * p.depth);
+      ctx.drawImage(sprites[p.hue], p.x - hs / 2, p.y - hs / 2, hs, hs);
+    }
+
+    // Kromatisk aberration (rave): nära partiklar splittras i cyan och magenta vid hög K
+    if (K > 0.3 && p.depth > 0.8) {
+      const off = (1.5 + 5 * K * (0.4 + pulse)) * p.depth;
+      ctx.globalAlpha = min(1, a * 0.45 * K);
+      ctx.drawImage(cyanS, p.x - off - s / 2, p.y - s / 2, s, s);
+      ctx.drawImage(magS,  p.x + off - s / 2, p.y - s / 2, s, s);
+    }
+  }
+
+  // Gnistor och dammpuffar från landningar
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const sp = sparks[i];
+    sp.life -= dt;
+    if (sp.life <= 0) {                          // ta bort genom att byta plats med sista
+      sparks[i] = sparks[sparks.length - 1];
+      sparks.pop();
+      continue;
+    }
+    sp.vx += sp.ax * dt;
+    sp.vy += sp.ay * dt;
+    sp.vx *= 1 - 1.5 * dt;                       // luftmotstånd
+    sp.vy *= 1 - 1.5 * dt;
+    sp.x += sp.vx * dt;
+    sp.y += sp.vy * dt;
+    const k = sp.life / sp.max;                  // 1 vid start, 0 när den slocknar
+    const ss = sp.size * (0.6 + 0.4 * k);
+    ctx.globalAlpha = k * k * 0.9;
+    ctx.drawImage(sprites[sp.hue], sp.x - ss / 2, sp.y - ss / 2, ss, ss);
+  }
+
+  // Spegling i golvet: partiklar nära golvet speglas svagt och skimrar under linjen
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, floorY + 2, width, height - floorY);
+  ctx.clip();                                    // allt som ritas här syns bara under golvet
+  for (const p of particles) {
+    const d = floorY - p.y;
+    if (d < 0 || d > 220) continue;
+    const near = 1 - d / 220;                    // 1 vid golvet, 0 längre upp
+    const rs = min(MAX_SIZE, max(5, p.size * p.depth * 15));
+    const rx = p.x + sin(now * 2.5 + p.x * 0.03) * (1 + K * 3);   // skimmer som vatten
+    ctx.globalAlpha = near * 0.28 * p.depth * (p.state === 'resting' ? 0.6 : 1);
+    ctx.drawImage(sprites[p.hue], rx - rs / 2, floorY + d * 0.9 - rs * 0.3, rs, rs * 0.6);
+  }
+  ctx.restore();
+
+  ctx.globalAlpha = 1;
+  ctx.restore();
+
+  // Tryckvågor vid klapp (ringar som växer och bleknar)
+  rings = rings.filter(r => now - r.t0 < 1.2);   // ta bort gamla ringar
+  for (const r of rings) {
+    const age = now - r.t0;
+    if (age < 0) continue;                       // den här ringen har inte startat än
+    ctx.strokeStyle = `hsla(${(r.hue + shift) % 360},100%,70%,${1 - age / 1.2})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(width / 2, height * 0.5, age * width * 0.5, 0, TWO_PI);
+    ctx.stroke();
+  }
+
+// Kort, kraftig vit blixt exakt vid finalens BANG.
+if (finaleFlash > 0) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 0.85 * finaleFlash;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+}
+
+  // Förvarningsflimmer (kort, vid första felet i varje omgång)
+  if (flash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${flash * 0.35 * (sin(now * 90) > 0 ? 1 : 0.3)})`;
+    ctx.fillRect(0, 0, width, height);
+    flash -= dt * 3.5;
+  }
+
+// Finalen: tona gradvis ner hela huvudbilden till svart.
+if (finaleFadeAt !== null) {
+  const fadeProgress = Math.max(
+    0,
+    Math.min(1, (now - finaleFadeAt) / FINAL_FADE_SECS)
+  );
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = fadeProgress;
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+}
+
+}
+
+
+/* ---------- 9. TEXT OCH TANGENTER ---------- */
+
+function updateHud() {
+  const level = constrain(round(K / CLAP_STEP), 1, 5);
+
+  let soundBar = '░'.repeat(MIC_BAR_LEN);
+
+  if (analyser) {
+    const filled = constrain(
+      round(micShow / MIC_BAR_MAX * MIC_BAR_LEN),
+      0,
+      MIC_BAR_LEN
+    );
+
+    soundBar =
+      '█'.repeat(filled) +
+      '░'.repeat(MIC_BAR_LEN - filled);
+  }
+
+  hudEl.textContent = `NIVÅ ${level}/5\nLJUD ${soundBar}`;
+
+  // Dölj även informationen nere till höger.
+  boardEl.textContent = '';
+}
+
+
+function keyPressed() {
+  if (key === ' ') {
+    clap();
+    return false;                                // hindrar sidan från att scrolla
+  }
+  if (key === '1') setMode('demo');
+  else if (key === '2') setMode('user');
+  else if (key === 'r' || key === 'R') resetCycle(millis() / 1000);
+  else if (key === '+') sens *= 1.25;
+  else if (key === '-') sens /= 1.25;
+}
+
+// Startknappen: starta ljud och mikrofon, ta sedan bort startskärmen
+async function onStartClick() {
+  await startAudio();
+  const startScreen = document.getElementById('start');
+
+  // Startsidan tonas ut under 0,9 s (se #start i CSS) och tas bort när övertoningen är klar.
+  const leaveStart = () => {
+    document.body.classList.remove('intro');
+    startScreen.classList.add('leaving');
+    setTimeout(() => startScreen.remove(), 1000);
+  };
+
+  if (analyser) {
+    leaveStart();
+  } else {
+    document.getElementById('err').textContent = 'Mikrofonen blockerades. Du kan fortfarande klappa med mellanslag.';
+    setTimeout(leaveStart, 1800);
+  }
+}
+// Filmkorn: en liten bild med glest, svagt brus som läggs över allt och flyttas slumpmässigt.
+// Det ligger ovanpå canvasen (inte i den), så det ackumuleras inte i sudd-effekten.
+(function makeGrain() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 160;
+  const g = c.getContext('2d');
+  const img = g.createImageData(160, 160);
+  for (let i = 0; i < img.data.length; i += 4) {
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+    img.data[i + 3] = Math.random() < 0.3 ? 6 + Math.random() * 22 : 0;
+  }
+  g.putImageData(img, 0, 0);
+  const el = document.getElementById('grain');
+  el.style.backgroundImage = `url(${c.toDataURL()})`;
+  setInterval(() => {
+    el.style.transform = `translate(${-Math.random() * 64}px, ${-Math.random() * 64}px)`;
+  }, 90);
+})();
+
+// Hämta knappen med dess id och registrera en klickhändelse.
+// När knappen klickas körs onStartClick(), som försöker starta ljud/mikrofon.
+document.getElementById('go').addEventListener('click', onStartClick);
+</script>
+
+<script src="varldsmiljo.js"></script>
+
+</body>
+</html>

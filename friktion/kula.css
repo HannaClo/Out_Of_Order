@@ -1,0 +1,71 @@
+
+/* Jag gör grundinställningar för hela HTML-sidan.
+   Genom att välja både html och body ser jag till att reglerna gäller för hela dokumentets grundläggande visningsyta. */
+html,body{
+  margin:0; /* Jag tar bort webbläsarens standardmarginaler så att innehållet kan fylla hela skärmen. */
+  height:100%; /* Jag låter både html och body sträcka sig över hela höjden på webbläsarfönstret. */
+  overflow:hidden; /* Jag stänger av vanlig scrollning på sidan. Det passar eftersom upplevelsen är tänkt att visas som en helskärmsvy. */
+  font-family:ui-monospace,Menlo,Consolas,monospace; /* Jag använder ett monospace-typsnitt där alla tecken har samma bredd. Det ger sidan en teknisk och digital känsla. */
+  color:#cfc8ff; /* Jag anger en ljuslila standardfärg för texten. */
+  background:#06040e; /* Jag sätter en mycket mörk bakgrundsfärg som grund för hela världen. */
+  touch-action:none; /* Jag stänger av webbläsarens vanliga pekgester, exempelvis svepning och zoomning, så att pekinteraktioner kan hanteras av själva upplevelsen. */
+}
+
+/* Jag stylar canvas-elementet.
+   Canvas är ett HTML-element som kan användas för att rita grafik med JavaScript.
+   Det används ofta för interaktiva och visuella upplevelser. */
+canvas{
+  display:block; /* Jag gör canvas till ett blockelement för att undvika det extra mellanrum som annars kan uppstå under ett inline-element. */
+  touch-action:none; /* Jag stänger av webbläsarens standardgester även direkt på canvas-ytan. */
+}
+
+/* Jag skapar gemensamma inställningar för informationsfälten HUD och info.
+   Dessa element kan visa text ovanpå den visuella upplevelsen. */
+#hud,#info{
+  position:fixed; /* Jag låter informationsfälten placeras i förhållande till webbläsarfönstret i stället för att följa det vanliga dokumentflödet. */
+  line-height:1.55; /* Jag ökar radavståndet så att texten blir lättare att läsa. */
+  white-space:pre; /* Jag bevarar mellanslag och radbrytningar i texten. Det är användbart när informationen är formaterad som flera rader. */
+  pointer-events:none; /* Jag gör så att informationsfälten inte fångar upp mus- eller pekhändelser. Användaren kan alltså interagera med innehållet bakom dem. */
+  text-shadow:0 0 6px #000; /* Jag lägger en mörk skugga bakom texten så att den blir lättare att urskilja mot olika bakgrunder. */
+  z-index:2; /* Jag placerar informationsfälten ovanför innehåll med lägre z-index. */
+}
+
+/* Jag placerar HUD-informationen uppe till vänster.
+   Jag bestämmer även textstorlek och inre marginaler. */
+#hud{
+  left:32px; /* Jag placerar elementet 32 pixlar från vänsterkanten. */
+  top:32px; /* Jag placerar elementet 32 pixlar från överkanten. */
+  font-size:13px; /* Jag använder en relativt liten textstorlek eftersom HUD-information ofta består av flera korta uppgifter. */
+  padding:8px; /* Jag skapar lite luft mellan texten och elementets kanter. */
+  box-sizing:border-box; /* Jag låter padding räknas in i elementets totala storlek. */
+}
+
+/* Jag placerar info-elementet längre in på sidan och ger det en större textstorlek.
+   Det gör att informationen i detta element kan visas mer framträdande än den mindre HUD-texten. */
+#info{
+  left:460px; /* Jag placerar elementet 460 pixlar från vänsterkanten. */
+  top:50px; /* Jag placerar elementet 50 pixlar från överkanten. */
+  font-size:40px; /* Jag använder större text för att informationen ska synas tydligare. */
+}
+
+/* Jag skapar ett element som täcker hela skärmen och har en svart bakgrund.
+   Det kan användas för att skapa en toning eller övergång mellan olika delar av upplevelsen. */
+#fade{
+  position:fixed; /* Jag placerar elementet i förhållande till webbläsarfönstret. */
+  inset:0; /* Jag låter elementet täcka hela ytan från alla fyra kanter. */
+  background:#000; /* Jag ger elementet en svart bakgrund. */
+  opacity:0; /* Jag gör elementet helt genomskinligt från början. */
+  pointer-events:none; /* Jag ser till att elementet inte blockerar klick eller andra pekinteraktioner. */
+  z-index:8; /* Jag placerar det ovanför spelinnehåll och informationsfält, men under startskärmen som har z-index 10. */
+}
+
+/* Jag använder en media query för skärmar som är högst 700 pixlar breda.
+   Här justerar jag placeringen och storleken på info-elementet för mindre skärmar. */
+@media(max-width:700px){
+  #info{
+    left:14px; /* Jag flyttar info-elementet närmare skärmens vänsterkant. */
+    top:150px; /* Jag placerar det längre ner från överkanten. */
+    font-size:25px; /* Jag minskar textstorleken så att informationen får bättre plats. */
+  }
+}
+

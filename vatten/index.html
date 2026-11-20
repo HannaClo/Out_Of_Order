@@ -1,0 +1,1079 @@
+
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vattenvärlden</title>
+<style>
+/* Jag anger här grundutseendet för sidan. Variablerna gör att jag kan återanvända
+   samma färger på flera ställen i CSS-koden. */
+:root{color-scheme:dark;--fg:#9fb4c2;--bg:#000;box-sizing:border-box;
+ padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;font-family:system-ui,sans-serif}
+
+/* Canvasen täcker hela fönstret. Det är här WebGL ritar själva vattenvärlden. */
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+/* HUD är informationsytan där exempelvis aktuell nivå visas. */
+#hud{
+  position:fixed;
+  left:32px;
+  top:calc(32px + env(safe-area-inset-top,0px));
+  font:12px/1.5 ui-monospace,monospace;
+  color:var(--fg);
+  white-space:pre;
+  pointer-events:none;
+  padding:8px;
+  box-sizing:border-box;
+}
+
+/* Kontrollpanelen ligger längst ner och innehåller reglaget för lutningen
+   samt knappar för olika funktioner. */
+#ctl{position:fixed;left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));font-size:12px;
+ color:var(--fg);display:flex;gap:12px;align-items:center}
+#ctl input{flex:1;min-width:80px}
+#ctl button{background:#111;color:var(--fg);border:1px solid #333;border-radius:6px;padding:6px 10px}
+
+/* Den här knappen döljs helt med CSS. */
+#bt {
+    display: none !important;
+}
+
+/* När sidan är i introduktionsläget döljer jag HUD och kontrollerna
+   bakom startskärmen. */
+body.intro #hud,body.intro #ctl{visibility:hidden}
+#bm,
+#br {
+  display: none;
+}
+
+/* Ett svart lager som kan tonas upp när världen ska återställas. */
+#fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:8}
+
+/* Startskärmen täcker hela sidan. Flexbox används för att centrera innehållet
+   och skapa mellanrum mellan instruktionerna och knapparna. */
+#start{font-family:"Avenir Next","Segoe UI",sans-serif;position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;
+ gap:16px;background:radial-gradient(ellipse at 50% 45%,#0c2a3c 0%,#020a10 72%);text-align:center;padding:30px 20px;box-sizing:border-box;overflow-y:auto;
+ transition:opacity .9s;color:#cfe6f2}
+
+/* När klassen leaving läggs till tonas startskärmen bort. */
+#start.leaving{opacity:0;pointer-events:none}
+.start-label{color:#19e6ff;font:11px ui-monospace,Menlo,monospace;letter-spacing:.2em}
+#start h1{margin:0;font-size:clamp(36px,5vw,64px);font-weight:500;letter-spacing:.015em;color:#7fe8ff;text-shadow:0 0 18px #19b8ffaa,0 0 40px #19e6ff55}
+.start-world{color:#19e6ff;font:13px ui-monospace,Menlo,monospace;letter-spacing:.35em}
+.start-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;width:min(820px,100%);margin:24px 0 16px}
+.start-step{padding:26px 20px;min-height:170px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:12px;border:1px solid #1f4a60;background:rgba(6,24,34,.65)}
+.step-number{color:#ff9bd8;font:12px ui-monospace,monospace;letter-spacing:.15em}
+.start-step strong{color:#19e6ff;font-size:15px;letter-spacing:.1em}
+.start-step span:not(.step-number){color:#d4e8f2;font-size:17px;line-height:1.55}
+.start-note{color:#9fd8ea;font:12px ui-monospace,monospace;margin:4px 0;max-width:620px;line-height:1.7}
+.start-btns{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+#start button{font:inherit;font-size:15px;font-weight:bold;letter-spacing:.12em;padding:15px 34px;border:2px solid #19e6ff;background:transparent;color:#19e6ff;cursor:pointer;border-radius:3px;transition:background .2s,color .2s,box-shadow .2s}
+#start button.alt{border-color:#4a7f94;color:#8fc2d6}
+#start button:hover,#start button:focus-visible{background:#19e6ff;color:#020a10;box-shadow:0 0 24px #19e6ff66;outline:none}
+.start-controls{display:flex;gap:22px;color:#6f98a8;font:11px ui-monospace,monospace;letter-spacing:.08em;flex-wrap:wrap;justify-content:center}
+
+/* På mindre skärmar lägger jag instruktionerna under varandra så att de
+   blir lättare att läsa på mobil. */
+@media(max-width:600px){#start{justify-content:flex-start;padding-top:36px;gap:13px}.start-steps{grid-template-columns:1fr;max-width:360px;gap:8px}.start-step{padding:16px;min-height:auto;gap:8px}}
+
+
+/* Vattenvärldens lutningsreglage */
+
+/* Jag justerar avståndet mellan reglagets olika delar. */
+#ctl {
+    gap: 14px;
+}
+
+/* Texten som beskriver reglaget får samma neonliknande utseende
+   som resten av gränssnittet. */
+#ctl span {
+    color: #7fe8ff;
+    font: 12px ui-monospace, monospace;
+    letter-spacing: 0.12em;
+    text-shadow: 0 0 8px #19e6ff88;
+    transform: translateX(-1cm);
+}
+
+/* Själva reglaget som användaren drar i för att ändra lutningen. */
+#tilt {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    min-width: 80px;
+    height: 5px;
+    border-radius: 20px;
+    outline: none;
+    cursor: pointer;
+    background: linear-gradient(
+        90deg,
+        #ff36b8,
+        #c45cff,
+        #548cff,
+        #19e6ff
+    );
+    box-shadow: 0 0 10px #19e6ff55;
+}
+
+/* Jag anpassar reglagets runda markör för webbläsare som bygger
+   på WebKit, exempelvis Chrome, Safari och Edge. */
+#tilt::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 19px;
+    height: 19px;
+    border-radius: 50%;
+    background: #baf7ff;
+    border: 2px solid #19e6ff;
+    box-shadow:
+        0 0 7px #19e6ff,
+        0 0 18px #19e6ffaa;
+}
+
+/* Firefox använder en separat pseudo-klass för samma markör. */
+#tilt::-moz-range-thumb {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: #baf7ff;
+    border: 2px solid #19e6ff;
+    box-shadow: 0 0 12px #19e6ff;
+}
+
+/* Här ändrar jag kontrollpanelens slutliga placering. Eftersom samma
+   selektor förekommer tidigare gäller dessa värden när reglerna krockar. */
+#ctl {
+    position: fixed;
+    left: 5cm;
+    right: 5cm;
+    bottom: calc(1cm + env(safe-area-inset-bottom, 0px));
+    gap: 14px;
+}
+
+</style>
+
+<!-- Jag laddar skriptet som hanterar tillbaka-funktionen. defer gör att
+     skriptet körs först när HTML-dokumentet har lästs in. -->
+<script src="../tillbaka.js" defer></script>
+
+<!-- Den här separata CSS-delen finjusterar startskärmens layout utan
+     att ändra dess färger. -->
+<style id="start-layout">
+#start{
+  justify-content:center;justify-content:safe center;     /* centrerad, men scrollar om fönstret är för lågt */
+  align-items:center;text-align:center;
+  gap:clamp(12px,2.2vh,22px);
+  padding:clamp(88px,15vh,140px) clamp(20px,5vw,72px) clamp(24px,3vh,36px);   /* mer luft upptill = innehållet sitter lägre (och knappen får plats) */
+  scrollbar-width:none;                                   /* ingen scrollbar som skjuter innehållet åt sidan */
+}
+#start::-webkit-scrollbar{display:none}
+.start-label{font-size:clamp(12px,1.2vw,16px);letter-spacing:.18em}
+#start h1{
+  font-size:clamp(30px,min(5.5vw,9.5vh),84px);
+  line-height:1.05;
+  overflow-wrap:anywhere;
+}
+.start-world{font-size:clamp(13px,1.2vw,16px);letter-spacing:.35em}
+.start-steps{grid-template-columns:1fr;width:min(1300px,100%);max-width:none;margin-left:auto;margin-right:auto;gap:clamp(12px,2vw,28px);
+  margin-top:clamp(16px,4vh,48px);margin-bottom:clamp(8px,2vh,24px)}
+.start-step{padding:clamp(18px,3vh,32px) 28px;min-height:min(24vh,280px);gap:clamp(8px,1.6vh,16px)}
+.step-number{font-size:15px}
+.start-step strong{font-size:clamp(17px,1.5vw,22px)}
+.start-step span:not(.step-number){font-size:clamp(16px,1.45vw,21px);line-height:1.5}
+.start-note{font-size:clamp(12px,1.1vw,15px);max-width:820px}
+#start button{font-size:clamp(15px,1.3vw,19px);padding:clamp(14px,2.2vh,20px) clamp(32px,4vw,52px)}
+.start-controls{font-size:clamp(11px,1vw,14px);gap:12px 28px}
+#err{font-size:14px}
+@media(min-width:900px){.start-steps{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:600px){#start{padding:72px 20px 40px}.start-step{padding:18px;min-height:0}}
+</style>
+</head>
+
+<body class="intro">
+
+<!-- Canvasen används som rit-yta för WebGL. HUD och fade är separata
+     HTML-element som ligger ovanpå canvasen. -->
+<canvas id="c"></canvas><div id="hud"></div><div id="fade"></div>
+
+<!-- Startskärmens innehåll och instruktioner. -->
+<div id="start">
+ <div class="start-label">INTERAKTIV INSTALLATION · VÄRLD 02</div>
+ <h1>VATTENVÄRLDEN</h1>
+ <div class="start-world">OUT OF ORDER</div>
+ <div class="start-steps">
+  <div class="start-step"><span class="step-number">01</span><strong>LUTA</strong><span>Håll ned mellanslag eller häll med koppen för att hälla vatten.</span></div>
+  <div class="start-step"><span class="step-number">02</span><strong>HÄLL</strong><span>Se vattnet rinna ut och fylla hallen. Varje hällning tar några sekunder.</span></div>
+  <div class="start-step"><span class="step-number">03</span><strong>UTFORSKA</strong><span>Häll fem gånger och se hur vattnet förändras för varje nivå.</span></div>
+ </div>
+ <p class="start-note">TIPS: Häll tills det slutar komma vatten för full effekt.</p>
+  <div class="start-btns"><button id="go">KLIV IN I VÄRLDEN</button><button id="mb" class="alt">KOPPLA MICRO:BIT</button></div>
+ <div class="start-controls"><span>[MELLANSLAG] eller luta koppen</span></div>
+</div>
+
+<!-- Kontrollpanelen. Range-reglaget ger ett värde mellan 0 och 90 grader.
+     Knapparna finns i HTML även om vissa av dem döljs med CSS. -->
+<div id="ctl"><span>Lutning</span><input id="tilt" type="range" min="0" max="90" value="0">
+<button id="bm">Läge (M)</button><button id="br">Återställ (R)</button><button id="bt">Micro:bit: ej ansluten</button></div>
+
+<!-- Jag laddar ljudfunktionerna och Micro:bit-funktionerna innan huvudskriptet,
+     så att de kan användas när huvudkoden körs. -->
+<script src="vattenljud.js"></script>
+<script src="microbit.js"></script>
+
+<script>
+// ---------- WebGL-grund (som förut) ----------
+
+// En kort hjälpfunktion för att hämta HTML-element via deras id.
+// Jag sparar även canvasen och HUD-elementet i variabler för att slippa
+// leta upp dem på nytt varje gång jag behöver använda dem.
+const $=i=>document.getElementById(i),cv=$('c'),hud=$('hud');
+
+// Jag begär en WebGL2-kontext från canvasen. WebGL används för att rita
+// den avancerade grafiken direkt med hjälp av grafikkortet.
+const gl=cv.getContext('webgl2',{antialias:false,alpha:false});
+
+// Om något grundläggande saknas visar jag ett felmeddelande och avbryter.
+// Det är bättre än att försöka köra vidare med en grafikmotor som inte fungerar.
+function fail(m){hud.textContent=m;throw new Error(m)}
+if(!gl)fail('WebGL2 saknas i den här webbläsaren');
+if(!gl.getExtension('EXT_color_buffer_float'))fail('EXT_color_buffer_float saknas');
+
+// Jag aktiverar stöd för linjär filtrering av flyttalstexturer om webbläsaren
+// har tillägget. Resultatet blir mjukare övergångar mellan texturvärden.
+gl.getExtension('OES_texture_float_linear');
+
+// En Vertex Array Object håller reda på hur vertexdata ska tolkas av WebGL.
+gl.bindVertexArray(gl.createVertexArray());
+
+// Gemensam GLSL-header som läggs till i början av varje shader.
+// GLSL är språket som körs på grafikkortet och används för själva bildberäkningen.
+const HDR='#version 300 es\nprecision highp float;precision highp sampler2D;\n';
+
+// Skapar och kompilerar en shader. t anger om det är en vertex- eller fragmentshader,
+// och s innehåller själva GLSL-koden.
+function sh(t,s){const o=gl.createShader(t);gl.shaderSource(o,HDR+s);gl.compileShader(o);
+ if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))fail('Shader: '+gl.getShaderInfoLog(o));return o}
+
+// Kopplar ihop en vertexshader och en fragmentshader till ett färdigt program.
+// Om länkningen misslyckas avbryter jag med ett felmeddelande.
+function prog(v,f){const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,v));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,f));
+ gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))fail('Link: '+gl.getProgramInfoLog(p));p.u={};return p}
+
+// Hämtar en uniform från ett shaderprogram. Jag sparar resultatet i p.u
+// så att jag inte behöver slå upp samma uniform på nytt varje bildruta.
+function U(p,n){return p.u[n]||(p.u[n]=gl.getUniformLocation(p,n))}
+
+// Skapar en textur och en framebuffer som jag kan rita till.
+// En framebuffer fungerar som en separat rit-yta. Jag använder den bland annat
+// för att lagra simuleringens resultat innan det visas på skärmen.
+function target(w,h){const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+ gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,w,h,0,gl.RGBA,gl.HALF_FLOAT,null);
+ for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])
+  gl.texParameteri(gl.TEXTURE_2D,k,v);
+ const f=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,f);
+ gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);return{t,f,w,h}}
+
+// Kopplar en textur till en viss texturenhet och berättar för shadern
+// vilken enhet den ska läsa från.
+function bind(tx,u,p,n){gl.activeTexture(gl.TEXTURE0+u);gl.bindTexture(gl.TEXTURE_2D,tx.t);gl.uniform1i(U(p,n),u)}
+
+// Väljer vilken framebuffer som ska användas och ställer in storleken
+// på det område som WebGL ska rita i.
+function draw(dst,w,h){gl.bindFramebuffer(gl.FRAMEBUFFER,dst?dst.f:null);gl.viewport(0,0,w,h)}
+
+// Bildfil -> textur (svart platshållare tills bilden laddats). w,h behövs för beskärningen.
+// Jag skapar först en svart en-pixelstextur. När bilden har laddats ersätter jag
+// innehållet med bildens riktiga pixlar.
+function imageTexture(url){
+ const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+ gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
+ for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])
+  gl.texParameteri(gl.TEXTURE_2D,k,v);
+ const r={t,w:1,h:1},img=new Image();
+ img.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);r.w=img.width;r.h=img.height};
+ img.onerror=()=>console.error('Kunde inte ladda bilden:',url);img.src=url;return r}
+
+// Jag laddar två bilder som används i den visuella miljön.
+// BG är själva hallfotot och ENV används som miljöbild i reflektionerna.
+const BG=imageTexture('assets/vatten1.jpeg');   // hallen
+const ENV=imageTexture('assets/vatten2.jpg');   // neonreflektion
+
+// GOLVKANT uppmätt från vatten1.jpeg (pixlar i 2048x1456). Dubbla x = lodrät kant (pelarens sida),
+// sneda linjer = pelarens sidoyta och väggens nederkant. Justera siffrorna här om något inte ligger rätt.
+
+// Jag beskriver golvets kontur som en lista med koordinater i originalbilden.
+// Varje par är en x- och y-position. Punkterna används senare för att avgöra
+// var golvet slutar och var väggar eller pelare står framför det.
+const FLOOR=[[0,1105],[95,1078],[95,1250],[345,1250],[400,1200],[400,1110],[528,1110],[528,1027],[612,1027],[612,962],
+ [672,962],[672,920],[715,920],[715,882],[1333,882],[1333,920],[1376,920],[1376,962],[1432,962],[1432,1027],[1515,1027],
+ [1515,1110],[1645,1110],[1645,1200],[1700,1250],[1940,1250],[1940,1072],[2048,1125]];
+
+// Jag skapar en array som kan lagra golvets y-koordinat för varje x-position.
+// Float32Array är effektivare än en vanlig JavaScript-array när data ska skickas
+// vidare till grafikkortet.
+const FYD=new Float32Array(2048*4);
+
+// Här bygger jag en textur av golvkonturen. För varje pixelkolumn räknar jag ut
+// var golvlinjen ligger genom att interpolera mellan två närliggande punkter.
+// Resultatet används senare av shadern för att veta var vatten kan synas.
+const FYT=(()=>{const W=2048,d=FYD;
+ for(let x=0;x<W;x++){let y=FLOOR[FLOOR.length-1][1];
+  for(let i=0;i<FLOOR.length-1;i++){const a=FLOOR[i],b=FLOOR[i+1];
+   if(b[0]>a[0]&&x>=a[0]&&x<b[0]){y=a[1]+(b[1]-a[1])*(x-a[0])/(b[0]-a[0]);break}}
+  d[x*4]=y/1456}
+ const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+ gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,W,1,0,gl.RGBA,gl.FLOAT,d);
+ for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],
+ [gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,k,v);
+ return{t}})();
+
+// En vertexshader som skapar en stor triangel som täcker hela skärmen.
+// Jag behöver inte skicka in några egna hörnpunkter: gl_VertexID används
+// för att räkna fram positionerna direkt.
+const FSV='void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);gl_Position=vec4(p*2.-1.,0,1);}';
+
+// ---------- Vågsimulering (höjdfält, Evan Wallace). R=höjd G=fart B,A=normal x,z ----------
+
+// Här bestämmer jag storleken på simuleringens rutnät och hur det motsvarar
+// den tänkta vattenytan i 3D-världen. JZ är platsen där vattenstrålen träffar.
+const SIMW=1536,SIMH=1056,XMIN=-4.8,XSPAN=9.6,ZMIN=0.0,ZSPAN=9.0,JZ=3.3;
+
+// Gör om ett tal till en sträng med fyra decimaler. Det används när
+// JavaScript-värden ska skrivas in i GLSL-koden.
+const F=v=>v.toFixed(4);
+
+// HINDERMASK: varje simuleringscell projiceras till fotot; ligger den bakom golvkanten (pelare/vägg) är den fast.
+
+// Jag skapar en mask som markerar delar av simuleringen som ligger bakom
+// väggar eller pelare. De områdena ska inte kunna bete sig som fri vattenyta.
+const OBS=(()=>{const AS=2048/1456,FP=1.1,VH=.47,d=new Uint8Array(SIMW*SIMH);
+ for(let y=0;y<SIMH;y++)for(let x=0;x<SIMW;x++){
+  const wx=XMIN+(x+.5)/SIMW*XSPAN,wz=ZMIN+(y+.5)/SIMH*ZSPAN,u=.5+wx*FP/(wz*AS),vt=VH+1/wz;
+  if(u>=0&&u<1&&vt<FYD[Math.floor(u*2048)*4]-.0015)d[y*SIMW+x]=255}
+ const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+ gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+ gl.texImage2D(gl.TEXTURE_2D,0,gl.R8,SIMW,SIMH,0,gl.RED,gl.UNSIGNED_BYTE,d);
+ for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE]])gl.texParameteri(gl.TEXTURE_2D,k,v);
+ return{t}})();
+
+// Den här shadern uppdaterar vågsimuleringen. Den kan arbeta i tre lägen:
+// 0 = beräkna nästa vågsteg, 1 = lägga till en droppe/vågimpuls,
+// 2 = räkna fram ytans normaler som behövs för ljus och reflektion.
+const simP=prog(FSV,`uniform sampler2D T,OB;uniform int mode;uniform vec2 c;uniform float rad,str,Rp;out vec4 o;
+const vec2 NN=vec2(${F(SIMW)},${F(SIMH)}),DW=vec2(${F(XSPAN)},${F(ZSPAN)}),ORG=vec2(${F(XMIN)},${F(ZMIN)});const float JZ=${F(JZ)};
+vec2 sUV(vec2 u){return clamp(u,.5/NN,1.-.5/NN);}
+float sol(vec2 q){return texture(OB,sUV(q)).r;}
+float hh(vec2 q,float own){return sol(q)>.5?own:texture(T,sUV(q)).r;}   // fast vägg: reflekterar (Neumann)
+void main(){
+ vec2 u=gl_FragCoord.xy/NN;vec4 i=texture(T,u);vec2 dx=vec2(1./NN.x,0.),dy=vec2(0.,1./NN.y);
+
+// I läge 0 räknar jag ut nästa vågsteg genom att läsa höjden i granncellerna.
+// Kombinationen av närliggande celler används för att beräkna hur vågen sprider sig.
+ if(mode==0){
+  if(sol(u)>.5){o=vec4(0);return;}
+  float a=(
+  (hh(u-dx,i.r)+hh(u+dx,i.r)+hh(u-dy,i.r)+hh(u+dy,i.r))*.2
+  +(hh(u-dx-dy,i.r)+hh(u-dx+dy,i.r)+hh(u+dx-dy,i.r)+hh(u+dx+dy,i.r))*.05
+);
+i.g+=(a-i.r)*2.;i.g*=.997;
+
+// Jag dämpar vågorna nära simuleringens ytterkant och vid pölen strand.
+// På så sätt klingar vågorna av i stället för att fortsätta studsa okontrollerat.
+  vec2 e2=min(u,1.-u)*DW;float e=min(e2.x,e2.y);   // avstånd till kanten i världsenheter
+  i.g*=mix(.88,1.,smoothstep(0.,.6,e));            // kantdämpning
+  vec2 w=ORG+u*DW;float d=length(vec2(w.x,w.y-JZ));
+  float m=1.-smoothstep(Rp-.4,Rp-.02,d);           // 1 i pölen, 0 vid och utanför stranden: vågorna rinner ut på stranden
+  i.g*=mix(.82,1.,m);i.r*=mix(.9,1.,m);
+  i.r+=i.g;
+
+// I läge 1 skapar jag en lokal vågimpuls. c är positionen, rad är radien
+// och str bestämmer hur kraftig påverkan droppen får.
+ }else if(mode==1){
+  float k=max(0.,1.-length((c*.5+.5-u)*DW)/rad);k=.5-cos(k*3.14159265)*.5;i.r+=k*str;
+
+// I läge 2 räknar jag ut hur vattenytan lutar i x- och z-led.
+// Dessa normaler används sedan när vattenytan ska få realistiskt ljus.
+ }else{
+  float hc=i.r;
+  vec3 gx=vec3(8.*DW.x/NN.x/6.,hh(u+4.*dx,hc)-hh(u-4.*dx,hc),0.);
+vec3 gy=vec3(0.,hh(u+4.*dy,hc)-hh(u-4.*dy,hc),8.*DW.y/NN.y/6.);
+i.ba=normalize(cross(gy,gx)).xz;}
+ o=i;}`);
+
+// ---------- Partiklar: projiceras med SAMMA kamera som golvet ----------
+
+// Den här vertexshadermodellen placerar partiklarna i samma perspektiv som
+// bakgrundsbilden. Det gör att vattendropparna ser ut att befinna sig i hallen.
+const stP=prog(`layout(location=0)in vec4 P;uniform vec2 SC;uniform float AS,PS;
+const float FP=1.1,VH=.47,CH=.909;
+void main(){vec3 p=P.xyz-vec3(0.,CH,0.);float z=max(p.z,.1);
+ float u=.5+p.x*FP/(z*AS),vt=VH-FP*p.y/z;
+ vec2 su=(vec2(u,1.-vt)-.5)/SC+.5;            // foto -> skärm (omvänd "cover")
+ gl_Position=vec4(su*2.-1.,0.,1.);gl_PointSize=PS*P.w/z;}`,
+
+// Fragmentshadern bestämmer hur varje partikel ser ut. Jag bygger upp den
+// med mjuka cirkulära ljusfält så att partiklarna inte ser ut som fyrkantiga pixlar.
+`out vec4 o;void main(){vec2 q=(gl_PointCoord-.5)*2.;
+float dr=length(q);   // rund tonning mot noll vid kvadratens kant: inga platta, blockiga sidor
+q.y*=.78;
+q.x*=1.12;
+
+float d=length(q);
+float edge=1.-smoothstep(.55,1.,dr);
+float core=exp(-d*d*1.8)*.88;
+float highlight=exp(-d*d*9.)*.18;
+
+o=vec4((core+highlight)*edge*1.05,0,0,1);}`);
+
+// ---------- Huvudshader ----------
+
+// Huvudshadern kombinerar bakgrundsbilden, vattenytan, partiklarna och
+// ljuseffekterna till den slutliga bilden som visas på skärmen.
+const mP=prog(FSV,`uniform vec2 R,SC,BGSize;uniform float NE,WL,VOL,RP,HAS,TM,LB,LH,LL,LS,LSN,LT;uniform sampler2D T,S,BG,ENV,FY;
+out vec4 o;
+const float FP=1.1,VH=.47,JZ=${F(JZ)};
+
+// Omvandlar koordinater från världens x- och z-led till rätt plats i simuleringstexturen.
+vec2 simUV(float x,float z){return vec2((x-(${F(XMIN)}))/${F(XSPAN)},(z-${F(ZMIN)})/${F(ZSPAN)});}
+
+// Små matematiska funktioner för att skapa slumpmässigt brus.
+// Bruset används bland annat för att göra vattenytan mindre perfekt och mer naturlig.
+float h21(vec2 p){vec3 q=fract(vec3(p.xyx)*.1031);q+=dot(q,q.yzx+33.33);return fract((q.x+q.y)*q.z);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*f*(f*(f*6.-15.)+10.);
+ return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}
+
+// Jag läser bakgrundsbilden och omvandlar färgen till ett linjärt ljusvärde.
+// Det gör det lättare att utföra ljusberäkningar på ett mer korrekt sätt.
+vec3 phot(vec2 p){vec3 c=pow(texture(BG,clamp(p,vec2(.001),vec2(.999))).rgb,vec3(2.2));
+ return -log(max(vec3(.001),vec3(1.)-c))/1.3;}
+
+// Omvandlar en riktning till koordinater som kan användas för att läsa miljöbilden.
+vec2 envUV(vec3 d){d=normalize(d);return vec2(atan(d.z,d.x)/6.2831853+.5,asin(clamp(d.y,-1.,1.))/3.14159265+.5);}
+vec3 env(vec3 d){vec3 c=pow(texture(ENV,envUV(d)).rgb,vec3(2.2));return c*2.5;}
+
+// Fresnelberäkning: avgör hur mycket av en yta som ska reflektera ljus
+// beroende på vinkeln mellan betraktaren och ytan.
+float fr(float c,float f0){return f0+(1.-f0)*pow(1.-clamp(c,0.,1.),5.);}
+
+// Neonrören är masker i originalfotots koordinater. Endast ljus/glöd förstärks;
+// pelare, perspektiv, golv och vattengeometri lämnas helt orörda.
+
+// Jag skapar en smal mask för ett neonrör. Den mjuka övergången vid ändarna
+// gör att ljuset inte får en hård avklippt kant.
+float neonStrip(float u,float topV,float x,float yTop,float yBottom){
+ float vertical=smoothstep(yTop,yTop+.0045,topV)*
+                (1.-smoothstep(yBottom-.0045,yBottom,topV));
+ float d=abs(u-x);
+ return vertical*(.38*exp(-d*230.)+.92*exp(-d*920.));
+}
+
+// Här placerar jag ut de olika neonrören i bilden och ger dem färger.
+// Jag använder separata masker för vänster och höger sida, så att ljuset
+// kan förändras beroende på ljudets nivå och position.
+vec3 neonLights(vec2 photoUV){
+ float u=photoUV.x, topV=1.-photoUV.y;
+ float energy=clamp((LL-1.)/4.,0.,1.);
+ float breathe=.5+.5*sin(LT*1.25);
+ float pulse=.10+.09*breathe+LB*.72+LH*.24;
+ float leftSide=mix(1.,.48,step(.5,LS)*smoothstep(1.5,2.5,LL));
+ float rightSide=mix(.48,1.,step(.5,LS)*smoothstep(1.5,2.5,LL));
+
+ // Färgerna är avstämda mot respektive rör i vatten1.jpeg.
+ // Magenta på de rosa rören, elektriskt blått på de blå rören.
+ vec3 magenta=vec3(1.00,.075,.78);
+ vec3 blue=vec3(.025,.30,1.00);
+ vec3 purple=vec3(.52,.10,1.00);
+
+ // Varje anrop anger rörets x-position och hur högt det börjar och slutar.
+ float l0=neonStrip(u,topV,.04035,.142,.846); // yttersta vänster – full pelarhöjd
+ float l1=neonStrip(u,topV,.16125,.142,.846); // främre vänstra pelaren
+ float l2=neonStrip(u,topV,.24075,.210,.753);
+ float l3=neonStrip(u,topV,.28985,.250,.696); // blått rör
+ float l4=neonStrip(u,topV,.32414,.282,.649);
+ float l5=neonStrip(u,topV,.35258,.302,.625);
+
+ float r0=neonStrip(u,topV,.64533,.303,.624);
+ float r1=neonStrip(u,topV,.67368,.283,.651);
+ float r2=neonStrip(u,topV,.70820,.250,.697); // blått rör
+ float r3=neonStrip(u,topV,.75580,.210,.754);
+ float r4=neonStrip(u,topV,.83438,.143,.847); // lila upptill, blått nedtill
+ float r5=neonStrip(u,topV,.95255,.142,.846); // yttersta höger – full pelarhöjd
+
+ // Jag summerar ljuset från rören på respektive sida.
+ vec3 leftGlow=magenta*(l0+l1+l2+l4+l5)+blue*l3;
+ vec3 rightGlow=magenta*(r0+r1+r3+r5)+blue*r2;
+ rightGlow+=mix(purple,blue,smoothstep(.43,.82,topV))*r4;
+
+ // travelling skapar en liten rörlig ljusvariation längs rören.
+ float travelling=.88+.12*sin(LSN*.8+u*18.);
+ vec3 glow=leftGlow*leftSide+rightGlow*rightSide;
+
+ // Den horisontella linjen längst bak behåller sin rosa-till-blå färgövergång.
+ float back=exp(-abs(topV-.315)*520.)*
+   smoothstep(.345,.37,u)*(1.-smoothstep(.63,.66,u));
+ glow+=mix(magenta,blue,smoothstep(.46,.62,u))*back*.52;
+
+ return glow*pulse*travelling*(1.+energy*.55);
+}
+
+// Jag hämtar golvlinjens höjd för en viss x-position från texturen som
+// byggdes tidigare utifrån koordinaterna i FLOOR.
+float floorY(float u){return texture(FY,vec2(u,.5)).r;}
+
+// ---------- Scenen: bakgrund och vatten ----------
+
+// Den här funktionen räknar ut färgen för en pixel i scenen.
+// Först visas hallbilden och neonljuset. Om vatten finns lägger jag därefter
+// på pölen, vattenytan, reflektionerna och kontakten med golvet och pelarna.
+vec3 scene(vec2 su){
+ vec2 pu=(su-.5)*SC+.5;                       // skärm -> foto (cover)
+ float vt=1.-pu.y,fy0=floorY(pu.x),AS=BGSize.x/BGSize.y;
+ vec3 bg=phot(pu)*0.90+neonLights(pu);
+ if(HAS<.5)return bg;                         // inget vatten förrän strålen nått golvet
+
+ // PÖLEN: jag räknar avståndet från platsen där strålen träffar golvet.
+ // Ett litet brus gör strandkanten ojämn utan att skapa separata öar.
+ float vm=max(vt,fy0),zf=1./max(vm-VH,.02),xf=(pu.x-.5)*AS*zf/FP;
+ vec2 wq=mat2(.8,-.6,.6,.8)*vec2(xf,zf);
+ float dist=length(vec2(xf,zf-JZ))+(vn(wq*1.6)-.5)*.18+(vn(wq*4.1+7.3)-.5)*.05;
+ float inside=RP-dist;                        // >0 inne i pölen
+ float pw=max(max(zf*zf*SC.y/R.y,zf*AS/FP*SC.x/R.x)*.9,.003);   // en pixel i världsenheter -> skarp, antialiasad kant
+ float thick=smoothstep(0.,1.3,inside);       // djup: noll vid stranden, fullt inne i pölen
+ float WLl=WL*thick;
+
+ // Jag räknar ut hur högt vattnet når på pelaren genom att läsa av våghöjden
+ // i några punkter framför pelarens fot.
+ float zc=1./(fy0-VH),xc=(pu.x-.5)*AS*zc/FP;
+float hw0=(
+    texture(T,simUV(xc,zc*.90)).r+
+    texture(T,simUV(xc-.025,zc*.90)).r+
+    texture(T,simUV(xc+.025,zc*.90)).r+
+    texture(T,simUV(xc,zc*.95)).r+
+    texture(T,simUV(xc-.025,zc*.95)).r+
+    texture(T,simUV(xc+.025,zc*.95)).r
+)/6.;
+
+float hw=clamp(hw0*1.8,-.015,.04)*thick;
+ float k=1.-FP*WLl,fy=VH+k*(fy0-VH),fyv=VH+(1.-FP*(WLl+hw))*(fy0-VH);   // hw flyttar bara vattenlinjen på pelaren, aldrig ytans geometri (gav lodräta streck)
+ float vis=smoothstep(fyv-.0025,fyv+.004,vt)*smoothstep(-pw*.7,pw*.7,inside);
+float onFloor=smoothstep(fy0-.006,fy0+.006,vt);
+float onP=1.-onFloor;
+
+ // Jag mörkar ner golvet lite där det är vått och skapar även ett vått band
+ // på pelaren precis ovanför vattenlinjen.
+ float wetOut=onFloor*step(inside,0.)*exp(inside/.16);
+ float above=fyv-vt;
+ float wetP=onP*step(0.,above)*(1.-smoothstep(0.,.006+.03*thick,above))*step(0.,inside+.02);
+ vec3 bgw=bg*(1.-.38*wetOut)*(1.-.08*wetP);
+ if(vis<=0.)return bgw;
+
+ // Här omvandlar jag pixelns position till en position i vattenvärlden.
+ // På så sätt kan jag läsa rätt punkt i vågsimuleringen.
+ float z=k/(vt-VH),x=(pu.x-.5)*AS*z/FP;
+vec4 s=texture(T,simUV(x,z));
+
+ // Två rörliga brusskikt skapar små krusningar även när den större vågsimuleringen
+ // är lugn. Det gör att vattenytan inte ser helt slät eller statisk ut.
+float zq=1.,sg=1.;
+ vec2 mp=vec2(x,z)*5.5*zq,q1=mp+vec2(TM*.22,TM*.13),q2=mat2(.8,-.6,.6,.8)*mp*2.3-vec2(TM*.3,TM*.17);
+ const float e=.12;
+ vec2 mg=vec2(vn(q1+vec2(e,0))-vn(q1-vec2(e,0)),vn(q1+vec2(0,e))-vn(q1-vec2(0,e)))*.5
+        +vec2(vn(q2+vec2(e,0))-vn(q2-vec2(e,0)),vn(q2+vec2(0,e))-vn(q2-vec2(0,e)))*.25;
+mg*=(.05+.07*NE)*thick*(1.+.5*(zq-1.));
+
+// Jag bygger ytans normalvektor av vågsimuleringens normaler och bruset.
+// Normalen beskriver åt vilket håll vattenytan lutar och påverkar reflektionerna.
+ vec3 n=normalize(vec3(s.b*mix(3.,1.8,thick)*sg+mg.x,sqrt(max(0.,1.-dot(s.ba,s.ba))),s.a*mix(3.,1.8,thick)*sg+mg.y));
+ vec3 rd=normalize(vec3(x,-k/FP,z));
+
+ // SPEGLING: jag speglar bakgrundsbilden kring vattenytan och förskjuter den
+ // lite beroende på ytans lutning. Det får reflektionen att följa vågorna.
+ vec2 off=n.xz*vec2(.03,.045);
+ vec3 rv=reflect(rd,n);
+ vec3 refl=phot(vec2(pu.x+off.x,1.-(2.*fy-vt+off.y)));
+ vec3 ev=env(rv);ev=mix(vec3(dot(ev,vec3(.3,.6,.1))),ev,mix(1.,.85,thick));
+refl+=ev*(.72+NE*.9)*mix(1.,.7,thick)*(1.-.8*exp(-(vt-fy)*70.));                  // neon finns från start, och blir starkare med nivån
+
+ // Grunt vatten släpper igenom mer av golvet medan djupare vatten blir mörkare.
+vec3 body=phot(pu-vec2(off.x,-off.y)*.6)*mix(.98,.76,thick)
+         +vec3(.002,.012,.022)*thick;
+ float fres=fr(dot(-rd,n),.02);
+ float contact=exp(-(vt-fy)*70.);              // vid pelarens fot: nästan ren spegling = ingen synlig skarv
+ float rw=mix(.55,1.,thick);
+ vec3 col=mix(body,refl,clamp((fres*1.6+.12+contact*.8)*rw,0.,.95));
+col+=vec3(.008,.035,.065)*smoothstep(.02,.2,length(s.ba));
+
+ // Jag lägger till en ljus menisk längs pölen och en tunn ljus kant där
+ // vattenlinjen möter pelaren.
+ col+=onFloor*exp(-max(inside,0.)/(pw*1.6+.004))*(vec3(.07,.10,.13)+ev*.12);
+ col+=onP*exp(-abs(vt-fyv)/.007)*(vec3(.05,.07,.09)+ev*.10);   // mjuk ljus kant där vattnet möter pelaren
+ col=mix(col,bgw*1.5+vec3(.012,.018,.024),.65*onP);   // vattnet framför pelaren: ser pelaren genom vattnet i stället för svart spegling
+ return mix(bgw,col,vis);}
+
+// Jag kombinerar scenen med den separata texturen som innehåller partiklarna.
+// Där partiklar finns räknar jag ut en normal och använder den för reflektion
+// och brytning, så att vattenstrålen får ett mer genomskinligt och levande utseende.
+void main(){
+ vec2 su=gl_FragCoord.xy/R;
+ vec3 col=scene(su);
+
+ // Strålen: täthet (lätt oskarp) -> normal -> spegling + brytning
+ vec2 px=1./vec2(textureSize(S,0));
+ float t0=texture(S,su).r;
+ float ts=(t0*2.+texture(S,su+vec2(px.x*2.5,0)).r+texture(S,su-vec2(px.x*2.5,0)).r
+                +texture(S,su+vec2(0,px.y*2.5)).r+texture(S,su-vec2(0,px.y*2.5)).r)/6.;
+ if(ts>.2){
+  vec2 e=5.*px;
+  float gx=texture(S,su+vec2(e.x,0)).r-texture(S,su-vec2(e.x,0)).r;
+  float gy=texture(S,su+vec2(0,e.y)).r-texture(S,su-vec2(0,e.y)).r;
+  float inv=1./(ts+.35);
+  vec3 n=normalize(vec3(-gx*inv*1.5,-gy*inv*1.5,1.));
+  float AS=BGSize.x/BGSize.y;vec2 pu=(su-.5)*SC+.5;
+  vec3 rd=normalize(vec3((pu.x-.5)*AS/FP,-(1.-pu.y-VH)/FP,1.));
+  vec3 nW=normalize(vec3(n.x,n.y,-n.z));
+ float al=.62*smoothstep(.20,.42,ts);
+float Fr=clamp(fr(n.z,.02)+.04,0.,1.);
+
+ // Jag hämtar en något förskjuten version av scenen för att skapa brytning.
+ // Det är den visuella effekten av att ljus ändrar riktning när det passerar vatten.
+vec3 refr=scene(su+n.xy*.045)*vec3(.96,1.0,1.03);
+
+// Jag lägger på ett rörligt brus i reflektionen så att även ljusbilden
+// ser ut att röra sig lite när vattnet krusar sig.
+vec2 flowUV=su*vec2(90.,130.)+vec2(TM*1.2,-TM*2.0);
+float ep=.012;
+vec2 flowGrad=vec2(
+  vn(flowUV+vec2(ep,0.))-vn(flowUV-vec2(ep,0.)),
+  vn(flowUV+vec2(0.,ep))-vn(flowUV-vec2(0.,ep))
+);
+vec3 nFlow=normalize(nW+vec3(flowGrad*3.0,0.));
+
+// Jag beräknar miljöreflektionen och blandar den med den brytna scenen.
+// Fresnelvärdet avgör hur stor del av reflektionen som syns.
+vec3 reflection=env(reflect(rd,nFlow))*(.72+NE*.9);
+float waterFres=clamp(Fr*1.15,0.0,.82);
+
+col=mix(col,mix(refr,reflection,waterFres),al);
+ }
+ col=1.-exp(-col*1.3);
+ o=vec4(pow(col,vec3(1./2.2)),1.);}`);
+
+// ---------- Simulering ----------
+
+// Jag skapar två texturer som växlar mellan att vara indata och utdata.
+// Det gör att jag kan uppdatera simuleringen utan att läsa och skriva till
+// samma textur under ett och samma renderingssteg.
+let A=target(SIMW,SIMH),B=target(SIMW,SIMH),TH=null;
+
+// Utför ett simuleringssteg. Jag skickar in vilken typ av beräkning som ska göras
+// och eventuella parametrar för en vågimpuls.
+function simPass(mode,c,rad,str){
+ gl.useProgram(simP);draw(B,SIMW,SIMH);bind(A,0,simP,'T');bind(OBS,5,simP,'OB');gl.uniform1f(U(simP,'Rp'),HAS?Rf:0);
+ gl.uniform1i(U(simP,'mode'),mode);gl.uniform2f(U(simP,'c'),c?c[0]:0,c?c[1]:0);
+ gl.uniform1f(U(simP,'rad'),rad||.04);gl.uniform1f(U(simP,'str'),str||0);
+ gl.drawArrays(gl.TRIANGLES,0,3);[A,B]=[B,A]}
+
+// Nollställer båda simuleringstexturerna. Det används när världen återställs.
+function clearSim(){for(const t of [A,B]){gl.bindFramebuffer(gl.FRAMEBUFFER,t.f);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT)}}
+
+// ---------- Hällnings-tillståndsmaskin (oförändrad) ----------
+
+// FSM står för Finite State Machine, alltså en tillståndsmaskin.
+// Den håller reda på om glaset är upprätt, håller på att lutas eller faktiskt häller.
+// Jag använder tröskelvärden och en kort väntetid så att hällningen inte startar
+// av små oavsiktliga rörelser.
+const FSM={s:'UPRIGHT',hold:0,update(tilt,now){let ev=null;
+ if(this.s==='UPRIGHT'){if(tilt>25)this.s='TILTING'}
+ else if(this.s==='TILTING'){
+  if(tilt<20)this.s='UPRIGHT';
+  else if(tilt>50){this.hold||(this.hold=now);if(now-this.hold>150){this.s='POURING';this.hold=0;ev='pour'}}
+  else this.hold=0}
+ else if(this.s==='POURING'){
+  if(tilt<20){this.hold||(this.hold=now);if(now-this.hold>300){this.s='UPRIGHT';this.hold=0;ev='rearm'}}
+  else this.hold=0}
+ return ev}};
+
+// ---------- Partiklar ----------
+
+// Jag beskriver hur många partiklar som maximalt får finnas samtidigt.
+// PB är en Float32Array som innehåller partiklarnas koordinater och storlek
+// i ett format som enkelt kan skickas till grafikkortet. ps innehåller
+// själva JavaScript-objekten som håller reda på varje partikels egenskaper.
+const MAXP=16000,PB=new Float32Array(MAXP*4),ps=[];let nP=0;
+const pbuf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,pbuf);
+gl.bufferData(gl.ARRAY_BUFFER,PB.byteLength,gl.DYNAMIC_DRAW);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,4,gl.FLOAT,false,0,0);
+
+let mode='user',lvl=0,tilt=0,tiltCmd=0,spaceDown=false,en=0,WL=0;
+
+// LVL = vattenmängd per nivå (5 nivåer = 1.0). POUR = hur snabbt det rinner (vol per sekund). WLMAX = högsta vattenlinje.
+// POUR = flöde (vol/s), EMR = partiklar/s vid fullt flöde (en partikel = POUR/EMR vatten). WLMAX = högsta vattenlinje.
+// Varje hällning (nivå) pågår SESSION sekunder och tar sedan slut, även om glaset hålls lutat. Nivå 1+2 hällar 50 % var
+// = golvet fullt och vattenlinjen på max (WLMAX, som i steg 1). Nivå 3-5 hällar lika länge men tillför inget extra vatten.
+// vol = vatten som FAKTISKT landat, EMR = partiklar/s, DV = vatten per partikel (så att 6 s ger 50 %).
+
+// Jag håller reda på den totala vattenmängden, hur långt vattenfronten har kommit,
+// om det redan finns vatten och hur lång den aktuella hällningen har pågått.
+let vol=0,volv=0,Rf=0,HAS=false,sessT=99,sessDV=0,sessLen=6,frontK=1;   // sessLen = aktuell hällningstid, frontK = frontens fartfaktor
+
+// Konstanter för hällning och vattenmängd. SESSION är grundtiden för en hällning,
+// TAPER är tiden i slutet då strålen tunnas ut, EMR är partikelmängden per sekund,
+// och WLMAX är den maximala vattenlinjen.
+const SESSION=6,TAPER=.6,EMR=700,DV=.5/((SESSION-TAPER/2)*EMR),WLMAX=.6,FRONT=1.8,FAST=2.5;   // FAST = hur många gånger snabbare nivå 1+2 fyller (1 = som förut, högre = snabbare)
+
+// Tidigare aktivitet, timers, ackumulatorer och en kö för vågimpulser.
+let lastAct=performance.now(),resetAt=0,acc=0,emitAcc=0,lowerAcc=0,dropQ=[];
+
+// Skapar en ny partikel i vattenstrålen. Jag ger den en startposition nära
+// strålens mitt och små slumpmässiga variationer så att strålen inte blir helt stel.
+function emit(){
+ if(ps.length>=MAXP-1)return;const s=Math.random();
+ ps.push({x:(Math.random()-.5)*.03,y:2.3,z:JZ+(Math.random()-.5)*.03,vx:(Math.random()-.5)*.03,
+  vy:-(lvl>=4?1+s*2:1),vz:0,t:0,s,splash:false,dv:sessDV,sz:1})}
+
+// Extra vattenlager för nivå 4–5: faller från luften mot pölen
+// Jag skapar ytterligare partiklar med en annan startposition och lägre hastighet.
+// Egenskapen lower gör att partikeln kan behandlas separat i fysikberäkningen.
+function emitLower(){
+ if(ps.length>=MAXP-1)return;
+ const s=Math.random();
+ ps.push({
+  x:(Math.random()-.5)*.5,
+  y:1.05,
+  z:JZ+(Math.random()-.5)*.5,
+  vx:(Math.random()-.5)*.045,
+vy:-.15,
+vz:(Math.random()-.5)*.045,
+  t:0,s,splash:false,dv:0,sz:1,lower:true
+ });
+}
+
+// Vattenytans höjd vid (x,z): 0 på torrt golv, WL i pölens mitt, sjunker mjukt mot stranden (samma profil som i shadern)
+
+// En smoothstep-liknande funktion som ger en mjuk övergång mellan två värden.
+// Jag använder den för att låta vattennivån minska gradvis när man närmar sig strandkanten.
+const sm=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t)};
+
+// Räknar ut vattenytans höjd på en viss plats. Om inget vatten finns returneras 0.
+// Annars baseras höjden på vattennivån WL och hur långt platsen ligger från vattenfronten.
+function surf(x,z){return HAS?WL*sm(0,1.3,Rf-Math.hypot(x,z-JZ)):0}
+const SPP=[.95,1,.45,1,1,1];   // chans att ett nedslag ger stänk (som i steg 1)
+
+// Skapar ett antal mindre partiklar när en större vattenpartikel träffar vattenytan.
+// Antalet och hastigheten ändras beroende på vilken nivå upplevelsen befinner sig på.
+function makeSplash(p,Lv){
+   const count=Lv>=5?65:Lv>=4?50:Lv===2?10:Lv>=2?25:16;
+   const y0=surf(p.x,p.z)+.008;
+ for(let j=0;j<count;j++){
+  if(ps.length>=MAXP-400)break;                             // lämna plats åt strålen
+  const a=Math.random()*Math.PI*2,sp=.25+Math.random()*.5;
+  let vx=Math.cos(a)*sp,vz=Math.sin(a)*sp,vy=.9+Math.random()*1.2;
+  if(Lv===0){vx*=.65;vz*=.65}
+  if(Lv===1)vx+=Math.sin(p.t*5+j)*.1;
+  if(Lv===2){vx*=1.15;vz*=1.15;vy+=.2}
+  if(Lv>=3)vy+=.8+Math.random();
+  if(Lv>=4){const sw=Lv===5?.9:.4;vx+=-Math.sin(a)*sw;vz+=Math.cos(a)*sw}
+  ps.push({x:p.x,y:y0,z:p.z,vx,vy,vz,t:0,s:Math.random(),splash:true,dv:0,sz:(Lv===2?.62:.8)+Math.random()*.3})}}
+
+// Uppdaterar alla partiklar för en bildruta. Jag räknar först ut deras rörelse,
+// sedan kontrollerar jag om de träffar vattenytan eller lämnar det tillåtna området.
+// När partiklarna tas bort packar jag ihop listan genom att flytta in det sista
+// elementet på den borttagna partikelns plats.
+function stepP(dt0){
+ const Lv=mode==='demo'?1:lvl;
+ for(let i=ps.length-1;i>=0;i--){
+  const p=ps[i],dt=dt0+(p.pre||0);p.pre=0;p.t+=dt;   // pre = tid partikeln 'redan fallit' i sin första bildrutan
+  let ax=0,ay=-9.8,az=0;const s=p.s;
+
+// Jag anpassar partiklarnas rörelse efter nivån. På vissa nivåer får de
+// sidledsrörelse, på andra förändras riktningen eller så får de mer oregelbundna banor.
+if(!p.lower){
+   if(Lv===1)ax=0;
+  else if(Lv===2)ax=3+Math.sin(p.t*14)*1;
+  else if(Lv===3){if(p.t>.3){ay=11;ax=(s-.5)*3}}
+  else if(Lv>=4){
+   const w=(Lv===4?3.6:5.2)*(s<.5?-1:1)*(Lv===5?.6+s:1),c=Math.cos(w*dt),sn=Math.sin(w*dt);
+   const vx=p.vx*c-p.vy*sn,vy=p.vx*sn+p.vy*c;p.vx=vx;p.vy=vy;ay=-1.2;
+   if(Lv===5){az=Math.sin(p.t*4+s*9)*4;ay=Math.sin(p.t*3+s*20)*7;p.vx*=.99;p.vy*=.99}
+  }
+}
+  // Jag integrerar accelerationen till hastighet och sedan hastigheten till position.
+  // dt gör att rörelsen blir tidsbaserad i stället för beroende av bildfrekvensen.
+  p.vx+=ax*dt;p.vy+=ay*dt;p.vz+=az*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;
+
+  // träff: golvet (y=0) eller den verkliga vattenytan. Vatten räknas först när det landat.
+  if(!p.splash){const sp=Math.max(1,-p.vy);p.sz=STREAM*Math.max(.55,Math.min(1,1/Math.sqrt(sp)))}   // strålen smalnar när den accelererar
+
+  // Jag kontrollerar om partikeln rör sig nedåt och har passerat vattenytan.
+  // Endast partiklar som befinner sig inom simuleringens område räknas som träffar.
+  if(p.vy<0&&p.y<surf(p.x,p.z)&&p.x>XMIN&&p.x<XMIN+XSPAN&&p.z>ZMIN&&p.z<ZMIN+ZSPAN){
+   const d=Math.hypot(p.x,p.z-JZ);
+   if(p.splash)sndDrop++;else if(p.lower)sndRain++;else sndJet++;
+   if(!p.splash){
+    vol=Math.min(1,vol+p.dv);if(!HAS){HAS=true;Rf=.12;snd('firstHit')}
+    if(Math.random()<.35&&d<Rf-.05)dropQ.push([(p.x-XMIN)/XSPAN*2-1,(p.z-ZMIN)/ZSPAN*2-1,.0035,.16]);
+    if(p.lower&&d<Rf-.02)
+      dropQ.push([
+        (p.x-XMIN)/XSPAN*2-1,
+        (p.z-ZMIN)/ZSPAN*2-1,
+        .008,
+        .24
+      ]);
+    if(Math.random()<SPP[Lv])makeSplash(p,Lv)}
+   else if(!p.gen&&-p.vy>2.2&&d<Rf-.15&&Math.random()<.3&&ps.length<MAXP-400){
+    for(let j=0;j<3;j++){const a=Math.random()*6.283,sp=.15+Math.random()*.25;
+     ps.push({x:p.x,y:surf(p.x,p.z)+.02,z:p.z,vx:Math.cos(a)*sp,vy:.5+Math.random()*.8,vz:Math.sin(a)*sp,t:0,s:Math.random(),splash:true,gen:1,dv:0,sz:.7})}}
+     if(p.splash&&d<Rf-.15&&Math.random()<(Lv>=4?.7:.35))
+    dropQ.push([
+        (p.x-XMIN)/XSPAN*2-1,
+        (p.z-ZMIN)/ZSPAN*2-1,
+        Lv>=4?.006:.0035,
+        Lv>=4?.20:.16
+    ]);
+   p.t=99;p.landed=true}
+
+  // Jag tar även bort partiklar som har levt för länge eller hamnat utanför världen.
+  // Om en vanlig vattenpartikel försvinner utan att ha registrerats som landad
+  // räknas dess vatten ändå in i den totala mängden.
+  if(p.t>(Lv>=3?6:3)||p.y<-.3||p.y>6||Math.abs(p.x)>5.2||p.z<.5||p.z>9){
+   if(!p.splash&&!p.landed)vol=Math.min(1,vol+p.dv);   // vatten som flugit ur bild hamnar ändå i pölen
+   ps[i]=ps[ps.length-1];ps.pop()}}
+ nP=ps.length;
+
+ // Jag kopierar partiklarnas aktuella positioner och storlekar till PB.
+ // Den arrayen skickas senare till grafikkortet för att rita alla partiklar.
+ for(let i=0;i<nP;i++){PB[i*4]=ps[i].x;PB[i*4+1]=ps[i].y;PB[i*4+2]=ps[i].z;PB[i*4+3]=ps[i].sz}}
+
+// ---------- Start, reset-scen, demo, ljud ----------
+
+// STREAM styr strålens tjocklek. Det påverkar alltså hur bred den ser ut,
+// inte hur mycket vatten som simuleras.
+const STREAM=1.45;   // strålens tjocklek (1 = som förut). Ändrar bara bredden, inte genomskinlighet eller material.
+let started=false,fadeAt=null,demoPh=0,demoT=0,demoPours=0,manualT=0,plopQ=0,demoPoured=false;
+const FADE_SECS=2,HOLD_SECS=1;    // som Gravitationsvärlden: 2 s nedtoning till svart, sedan 1 s mörker, sedan återställning
+
+// Ljud: allt hanteras av vattenljud.js. Fel i ljudet får aldrig kunna stoppa världen.
+
+// Jag skickar ljudkommandon till Vattenljud om objektet och den efterfrågade
+// funktionen finns. try/catch gör att ett ljudfel inte stoppar resten av upplevelsen.
+const snd=(fn,...a)=>{try{if(typeof Vattenljud!=="undefined"&&Vattenljud[fn])return Vattenljud[fn](...a)}catch(e){console.warn("Ljud:",fn,e)}};
+
+// Demo använder en fast lugn ljudnivå, medan användarläget följer aktuell nivå.
+const musicLvl=()=>mode==='demo'?2:Math.max(1,lvl);
+let sndJet=0,sndDrop=0,sndRain=0;           // antal nedslag sedan förra bildrutan (nedslagsljudet följer dem)
+
+// Jag startar en återställning genom att spara tidpunkten då nedtoningen ska börja.
+function requestReset(now){if(fadeAt===null)fadeAt=now}
+
+// Räknar ut hur mörk bilden ska vara under återställningen.
+// När både nedtoningen och den svarta pausen är färdiga nollställer jag världen.
+function fadeAlpha(now){if(fadeAt===null)return 0;const e=(now-fadeAt)/1000;
+ if(e>=FADE_SECS+HOLD_SECS){fadeAt=null;reset();snd('fadeIn',1.8);return 0}const fa=Math.min(1,e/FADE_SECS);snd('setFade',fa);return fa}
+
+// Demo (tangent 1): som i Gravitationsvärlden är nivån låst. Varje hällning beter sig som nivå 1, fem gånger, sedan återställning.
+
+// startWorld byter till valt läge, återställer variablerna och visar själva världen.
+// Startskärmen tonas bort och tas sedan bort från dokumentet.
+function startWorld(m){
+ mode=m;reset();started=true;snd('start',musicLvl());document.body.classList.remove('intro');
+ const st=$('start');st.classList.add('leaving');setTimeout(()=>st.remove(),1000)}
+$('go').onclick=()=>startWorld('user');
+
+// ---------- Micro:bit (Bluetooth) – se microbit.js ----------
+
+// Jag uppdaterar knapparnas texter när Micro:bit skickar en status.
+// Själva Bluetooth-anslutningen hanteras i den externa filen microbit.js.
+Microbit.onStatus=s=>{const m=$('mb');if(m)m.textContent='MICRO:BIT: '+s.toUpperCase();$('bt').textContent='Micro:bit: '+s};
+$('mb').onclick=()=>Microbit.connect();$('bt').onclick=()=>Microbit.connect();
+
+// ---------- Läge, nivåer, återställning ----------
+
+// Nollställer vattenmängd, partiklar, vågsimulering och hällningsmaskin.
+// Jag använder samma funktion både när världen startar och när den återställs.
+function reset(){snd('reset');sndJet=sndDrop=sndRain=0;demoPh=0;demoT=0;demoPours=0;demoPoured=false;lvl=0;WL=0;vol=volv=Rf=0;HAS=false;sessT=99;dropQ.length=0;ps.length=0;nP=0;clearSim();FSM.s='UPRIGHT';FSM.hold=0;resetAt=0;lastAct=performance.now();window.resetPourTimer&&window.resetPourTimer()}   // ny säkerhetstimer vid start/återställning
+
+// Hanterar händelser från tillståndsmaskinen. När en hällning börjar
+// ökar jag nivån, väljer hällningstid och räknar ut hur mycket vatten
+// varje partikel ska bidra med.
+function onEvent(ev,now){lastAct=now;
+ if(ev==='pour'){window.resetPourTimer&&window.resetPourTimer();demoPoured=true;if(mode==='demo')demoPours++;if(mode==='user'&&lvl<5)lvl++;const fast=mode==='demo'||lvl<=2;sessT=0;sessLen=fast?SESSION/FAST:SESSION;frontK=fast?FAST:1;sessDV=fast?.5/((sessLen-TAPER/2)*EMR):0;snd('pourStart')}
+ if(ev==='rearm'&&((mode==='user'&&lvl>=5)||(mode==='demo'&&demoPours>=5)))resetAt=now+2500}
+
+// Byter mellan demo och användarläge. Om inget läge anges växlar jag
+// till motsatt läge jämfört med det som är aktivt.
+function setMode(m){const n=m||(mode==='demo'?'user':'demo');if(n!==mode){mode=n;reset()}}
+$('bm').onclick=()=>{if(started)setMode()};
+$('br').onclick=()=>{if(started)requestReset(performance.now())};
+
+// Tangentbordsstyrning. 1 och 2 väljer demo respektive användarläge.
+// När världen är igång kan mellanslag användas för att luta, och andra
+// tangenter hanterar återställning och Micro:bit.
+addEventListener('keydown',e=>{
+  if(e.key==='1'){
+    if(!started) startWorld('demo');
+    else if(mode!=='demo'){mode='demo';reset();snd('start',musicLvl())}
+    return;
+  }
+
+  if(e.key==='2'){
+    if(!started) startWorld('user');
+    else if(mode!=='user'){mode='user';reset();snd('start',musicLvl())}
+    return;
+  }
+
+  if(!started)return;
+
+  if(e.code==='Space'){spaceDown=true;manualT=6;e.preventDefault()}
+  else if(e.key==='r'||e.key==='R')requestReset(performance.now());
+  else if(e.key==='b'||e.key==='B')Microbit.connect();
+  else if(e.key==='k'||e.key==='K')Microbit.calibrate();
+});
+
+// När mellanslag släpps slutar jag öka lutningen.
+addEventListener('keyup',e=>{if(e.code==='Space')spaceDown=false});
+
+// När användaren drar i reglaget sparar jag det nya värdet som lutningskommando.
+// Plustecknet framför värdet omvandlar strängen från inputfältet till ett tal.
+$('tilt').oninput=e=>{if(!started)return;manualT=6;tiltCmd=+e.target.value};
+
+// BroadcastChannel gör att andra flikar eller fönster kan skicka lutningsvärden
+// till den här världen. Jag kontrollerar både att meddelandet finns och att
+// tilt faktiskt är ett numeriskt värde innan jag använder det.
+try{new BroadcastChannel('vattenvarlden').onmessage=e=>{
+ if(started&&e.data&&typeof e.data.tilt==='number'){tiltCmd=e.data.tilt;$('tilt').value=tiltCmd}}}catch(e){}
+
+// Jag exponerar några funktioner via WaterWorld så att annan kod kan styra
+// lutning, läge och återställning genom window-objektet.
+window.WaterWorld={setTilt:d=>{if(spaceDown||kb)return;tiltCmd=d},setMode,reset};   // mellanslag har företräde: micro:bit får inte skriva över lutningen medan mellanslag hålls/rampar ner
+
+// Anpassar canvasens upplösning efter fönstrets storlek.
+// devicePixelRatio gör att bilden blir skarpare på skärmar med hög pixeltäthet,
+// men jag begränsar värdet till 1.5 för att hålla nere beräkningskostnaden.
+function resize(){const r=Math.min(devicePixelRatio||1,1.5);
+ cv.width=Math.floor(innerWidth*r);cv.height=Math.floor(innerHeight*r);TH=target(cv.width,cv.height)}
+addEventListener('resize',resize);resize();clearSim();
+
+// ---------- Huvudloop ----------
+
+// prev används för att räkna ut tiden mellan bildrutorna.
+// fps är en utjämnad uppskattning av bildfrekvensen och kb håller reda på
+// om lutningen just nu styrs av tangentbordet.
+let prev=performance.now(),fps=60,kb=false;
+
+// frame är programmets huvudloop. Den körs en gång per bildruta och ansvarar
+// för att uppdatera styrning, nivåer, partiklar, ljud, vågor och slutlig grafik.
+function frame(now){
+ const dt=Math.min(.05,(now-prev)/1000);prev=now;fps+=(1/Math.max(dt,1e-4)-fps)*.05;
+
+ // Om mellanslag hålls nere ökar jag lutningen gradvis.
+ // När tangenten släpps minskar lutningen igen tills den når noll.
+ if(spaceDown){kb=true;tiltCmd=Math.min(90,tiltCmd+160*dt)}
+ else if(kb){tiltCmd=Math.max(0,tiltCmd-160*dt);if(tiltCmd===0)kb=false}
+
+ // Om lutningen ändras tillräckligt mycket registrerar jag ny aktivitet.
+ if(Math.abs(tiltCmd-tilt)>1.5)lastAct=now;
+ tilt=tiltCmd;$('tilt').value=tilt;
+
+ // Jag uppdaterar tillståndsmaskinen och skickar vidare eventuella hällningshändelser.
+ const ev=FSM.update(tilt,now);if(ev)onEvent(ev,now);
+
+ // Om en schemalagd återställningstid har passerats startar jag nedtoningen.
+ if(resetAt&&now>resetAt){resetAt=0;requestReset(now)}
+
+ // Energin följer nivån mjukt. Den används bland annat för att påverka ljus och ljud.
+ en+=((mode==='user'?lvl/5:.2)-en)*Math.min(1,dt*1.5);
+
+ // Taper gör att vattenstrålen tunnas ut mot slutet av varje hällning.
+ const taper=Math.max(0,Math.min(1,(sessLen-sessT)/TAPER));
+ if(FSM.s==='POURING'&&tilt>35&&sessT<sessLen){sessT+=dt;emitAcc+=dt*EMR*taper;
+  const m=Math.floor(emitAcc);let j=0;
+  while(emitAcc>=1){emitAcc--;emit();const q=ps[ps.length-1];if(q)q.pre=dt*(1-(j+++.5)/m)}}
+
+  // Extra nedre vattenlager – tätare på nivå 5.
+  // Jag skapar dessa partiklar separat när nivå 4 eller 5 häller.
+if(FSM.s==='POURING'&&lvl>=4&&sessT<sessLen){
+ lowerAcc+=dt*(lvl===5?12:7)*taper;
+ while(lowerAcc>=1){
+  lowerAcc--;
+  emitLower();
+ }
+}else{
+ lowerAcc=0;
+}
+
+// Jag jämnar ut vattenvolymen och räknar om vattenlinjens höjd.
+// Math.pow gör att vattennivån inte ökar helt linjärt med volymen.
+ volv+=(vol-volv)*Math.min(1,dt*2.5);WL=WLMAX*Math.pow(volv,1.5);
+
+// Vattenfronten växer gradvis ut från nedslagspunkten, men får aldrig
+// växa snabbare än den hastighet som anges av FRONT och frontK.
+ if(HAS){const Rt=Math.max(.12,7.6*Math.sqrt(Math.min(1,vol)));Rf=Math.min(Rt,Rf+FRONT*frontK*dt)}   // fronten har begränsad fart
+
+ // Jag uppdaterar partiklarnas fysik och skickar information om vattenrörelser
+ // till ljudsystemet. Efteråt nollställer jag räknarna för nästa bildruta.
+ stepP(dt);
+ snd('update',{dt,flow:(FSM.s==='POURING'&&tilt>35&&sessT<sessLen)?taper:0,jet:sndJet,drops:sndDrop,rain:sndRain,
+  vol:volv,front:Rf,has:HAS,lvl:mode==='demo'?1:lvl,music:musicLvl()});sndJet=sndDrop=sndRain=0;
+
+ // Jag kör vågsimuleringen med fasta tidssteg på 1/120 sekund.
+ // Det gör att vågornas beteende blir jämnare även om bildfrekvensen varierar.
+ acc+=dt;let n=0;while(acc>=1/120&&n++<4){acc-=1/120;simPass(0)}
+
+ // När pölen blivit tillräckligt stor skapar jag ibland små vågor vid pelarna.
+ if(HAS&&vol>.3&&Math.random()<dt*3){const sd=Math.random()<.5?-1:1,x=sd*(.82+Math.random()*.2),z=2.8+Math.random()*4;   // svaga vågor som slår mot pelarna
+  dropQ.push([(x-XMIN)/XSPAN*2-1,(z-ZMIN)/ZSPAN*2-1,.0012,.12]);snd('slosh',vol,sd)}
+
+ // Jag behandlar ett begränsat antal vågimpulser från kön och tömmer sedan kön.
+ // Varje impuls skickas till simPass i läge 1.
+ for(let k=0;k<8&&dropQ.length;k++){const q=dropQ.pop();simPass(1,q,q[3],q[2])}
+ dropQ.length=0;
+ simPass(2);
+
+ // Fotots beskärning ("cover"): SC skalar skärm -> foto.
+ // Jag jämför bildförhållandet hos bakgrunden med canvasen för att räkna ut
+ // hur bilden ska beskäras så att den fyller hela skärmen.
+ const ia=BG.w/BG.h,sa=cv.width/cv.height,SC=ia>sa?[sa/ia,1]:[1,ia/sa];
+
+ // Jag rensar partikelns mellanliggande framebuffer innan jag ritar nya partiklar.
+ gl.bindFramebuffer(gl.FRAMEBUFFER,TH.f);gl.viewport(0,0,TH.w,TH.h);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+ if(nP){
+  gl.useProgram(stP);gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);
+  gl.bindBuffer(gl.ARRAY_BUFFER,pbuf);gl.bufferSubData(gl.ARRAY_BUFFER,0,PB,0,nP*4);
+  gl.uniform2f(U(stP,'SC'),SC[0],SC[1]);gl.uniform1f(U(stP,'AS'),ia);
+  gl.uniform1f(U(stP,'PS'),.06*1.1*TH.h/SC[1]);        // prickstorlek (världsenheter) -> pixlar
+  gl.drawArrays(gl.POINTS,0,nP);gl.disable(gl.BLEND)}
+
+ // Nu använder jag huvudshadern för att rita den slutliga scenen på canvasen.
+ // Först kopplar jag in simuleringen, partiklarna och bilderna som texturer.
+ gl.useProgram(mP);draw(null,cv.width,cv.height);
+ bind(A,0,mP,'T');bind(TH,1,mP,'S');bind(BG,2,mP,'BG');bind(ENV,3,mP,'ENV');
+
+ // Jag skickar över värden som shadern behöver för att kunna beräkna perspektiv,
+ // vattennivå, ljus, tid och om debugläget är aktivt.
+ gl.uniform2f(U(mP,'R'),cv.width,cv.height);gl.uniform2f(U(mP,'SC'),SC[0],SC[1]);
+ gl.uniform2f(U(mP,'BGSize'),BG.w,BG.h);gl.uniform1f(U(mP,'NE'),en);gl.uniform1f(U(mP,'WL'),WL);gl.uniform1f(U(mP,'VOL'),volv);gl.uniform1f(U(mP,'RP'),Rf);gl.uniform1f(U(mP,'HAS'),HAS?1:0);gl.uniform1f(U(mP,'TM'),now/1000);
+
+ // Jag hämtar ljudsystemets visuella tillstånd. Om det inte finns tillgängligt
+ // använder jag nollvärden så att grafiken ändå kan fortsätta ritas.
+ const lightState=snd('getVisualState')||{beat:0,hat:0,level:0,side:0,step:0};
+ gl.uniform1f(U(mP,'LB'),lightState.beat||0);gl.uniform1f(U(mP,'LH'),lightState.hat||0);
+ gl.uniform1f(U(mP,'LL'),lightState.level||0);gl.uniform1f(U(mP,'LS'),lightState.side||0);
+ gl.uniform1f(U(mP,'LSN'),lightState.step||0);gl.uniform1f(U(mP,'LT'),now/1000);
+
+ // Golvtexturen kopplas in sist och sedan ritar jag en helskärmstriangel.
+ // Fragmentshadern räknar då ut den slutliga färgen för varje pixel.
+ bind(FYT,4,mP,'FY');
+ gl.drawArrays(gl.TRIANGLES,0,3);
+
+ // Jag uppdaterar fade-lagret och visar vilken nivå användaren befinner sig på.
+ const fa=fadeAlpha(now);$('fade').style.opacity=fa;
+ hud.textContent = mode==='demo'
+  ? 'NIVÅ 1/5'
+  : 'NIVÅ '+lvl+'/5';
+
+ // requestAnimationFrame ber webbläsaren köra frame igen inför nästa bildruta.
+ requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

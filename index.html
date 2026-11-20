@@ -1,0 +1,312 @@
+
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<!-- Här anger jag att dokumentet är HTML5 och att sidans huvudspråk är svenska. -->
+<meta charset="utf-8">
+
+<!-- Jag anpassar sidans bredd efter enhetens skärm så att layouten fungerar på både mobil och dator. -->
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<!-- Titeln visas bland annat i webbläsarens flik. -->
+<title>Out of order – Kontrollcenter</title>
+
+<style>
+/* Jag använder border-box så att padding och kantlinjer räknas in i elementens totala bredd och höjd. */
+*{box-sizing:border-box}
+
+/* Jag sätter en mörk grundfärg på hela HTML-dokumentet. */
+html{background:#1c0b2e}
+
+/* Här återställer jag standardmarginalerna och bestämmer grundutseendet för texten på sidan. */
+html,body{margin:0;min-height:100%;color:#e3dcff;font-family:"Avenir Next","Segoe UI",sans-serif}
+
+/* 
+   Jag gör body till en flexcontainer för att kunna centrera huvudinnehållet
+   både horisontellt och vertikalt. Bakgrunden får en radiell gradient som
+   är ljusare i mitten och mörkare mot kanterna.
+   Transition gör att ändringar av opaciteten kan animeras.
+*/
+body{min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 40%,#1c0b2e 0%,#04030a 85%) no-repeat;background-size:100% 100%;transition:opacity .7s}
+
+/* 
+   När JavaScript lägger till klassen leaving tonas hela sidan ut.
+   Klassen används precis innan besökaren skickas vidare till en värld.
+*/
+body.leaving{opacity:0}
+
+/* 
+   Jag använder ett pseudo-element ovanpå sidan för att skapa tunna horisontella
+   linjer, ungefär som en gammal skärm. pointer-events:none gör att lagret
+   inte hindrar användaren från att klicka på innehållet.
+*/
+body::after{content:"";position:fixed;inset:0;pointer-events:none;opacity:.06;background:repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 3px)}
+
+/* 
+   Den här klassen ger texten ett monospace-typsnitt, alltså tecken med samma bredd.
+   Jag använder den på mindre texter och etiketter för att förstärka installationens
+   tekniska och digitala uttryck.
+*/
+.mono{font:16px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.18em}
+
+/* 
+   main är sidans huvudsakliga innehållsområde.
+   Jag begränsar bredden så att innehållet inte blir för utspritt på stora skärmar,
+   centrerar det och lägger till luft runt innehållet.
+*/
+main{width:100%;max-width:1500px;margin:0 auto;padding:64px 32px;text-align:center}
+
+/* 
+   Jag gör huvudrubriken stor men responsiv med clamp().
+   Det betyder att textstorleken anpassas efter skärmens bredd, men aldrig
+   blir mindre än 48px eller större än 110px.
+   Den rosa färgen och textskuggorna ger rubriken en lysande neonliknande effekt.
+*/
+h1{margin:10px 0 6px;font-weight:500;font-size:clamp(48px,8vw,110px);letter-spacing:.015em;color:#ff3df2;text-shadow:0 0 18px #ff3df2aa,0 0 40px #ff3df255}
+
+/* Jag använder cyan färg och extra teckenavstånd för den mindre underrubriken. */
+.sub{color:#19e6ff;letter-spacing:.35em}
+
+/* 
+   Här skapar jag ett CSS Grid för världarnas kort.
+   repeat(auto-fit, minmax(...)) gör att webbläsaren automatiskt väljer
+   hur många kolumner som får plats. Varje kort får minst 280px bredd.
+   Gap bestämmer avståndet mellan korten.
+*/
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:28px;margin:64px 0 40px;text-align:left}
+
+/* 
+   Varje värld presenteras som ett kort.
+   --c är en egen CSS-variabel för kortets accentfärg. Den får sitt värde
+   från varje korts inline-style som skapas i JavaScript.
+   Flex gör att innehållet kan placeras i en vertikal kolumn.
+   Jag tar bort länkens vanliga understrykning och behåller textfärgen.
+*/
+.card{--c:#19e6ff;position:relative;display:flex;flex-direction:column;gap:16px;min-height:400px;padding:32px 28px;color:inherit;text-decoration:none;border:1px solid #2b2a45;background:rgba(16,9,30,.7);transition:border-color .2s,box-shadow .2s,transform .2s;cursor:pointer}
+
+/* 
+   Jag skapar ett dekorativt hörn uppe till vänster med pseudo-elementet ::before.
+   Det är en del av kortets ram och får samma färg som kortets accentfärg.
+*/
+.card::before,.card::after{content:"";position:absolute;width:20px;height:20px;border:2px solid var(--c);opacity:.8}
+.card::before{top:-1px;left:-1px;border-right:0;border-bottom:0}
+
+/* 
+   Här skapar jag motsvarande dekorativa hörn nere till höger med ::after.
+   Genom att ta bort två av kanterna bildas en vinklad hörnmarkering.
+*/
+.card::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
+
+/* 
+   När användaren håller musen över ett kort, eller navigerar till det med
+   tangentbordet, ändras kantfärgen och en färgad skugga visas.
+   translateY(-3px) flyttar kortet lite uppåt för att visa att det går att välja.
+   focus-visible gör att effekten även fungerar vid tangentbordsnavigering.
+*/
+.card:hover,.card:focus-visible{border-color:var(--c);box-shadow:0 0 28px color-mix(in srgb,var(--c) 40%,transparent);transform:translateY(-3px);outline:none}
+
+/* 
+   Numret visar vilken värld kortet representerar.
+   Jag använder flex för att placera världens nummer till vänster
+   och tangentbordsnumret till höger.
+*/
+.num{color:var(--c);display:flex;justify-content:space-between}
+
+/* i-elementet används här som en vanlig behållare för tangentbordsnumret.
+   Jag tar bort dess standardkursivering och ger numret en dämpad färg. */
+.num i{font-style:normal;color:#7d789e}
+
+/* 
+   Jag formaterar varje världs rubrik.
+   Färgen hämtas från variabeln --c så att rubriken automatiskt matchar
+   kortets accentfärg.
+*/
+.card h2{margin:0;font-size:38px;font-weight:500;color:var(--c);text-shadow:0 0 14px color-mix(in srgb,var(--c) 55%,transparent)}
+
+/* Den här klassen används för den mindre versala texten under världens rubrik. */
+.card .t{font:14px ui-monospace,monospace;letter-spacing:.3em;color:#7d789e}
+
+/* 
+   Jag bestämmer utseendet på beskrivningen.
+   flex:1 gör att beskrivningen kan ta upp det tillgängliga utrymmet,
+   vilket hjälper till att hålla kortens nedersta delar i linje.
+*/
+.card p{margin:0;font-size:21px;line-height:1.5;color:#d6cff5;flex:1}
+
+/* 
+   Taggarna som visar vilken indata en värld använder placeras i en flexrad.
+   flex-wrap gör att taggarna automatiskt hamnar på nästa rad om utrymmet tar slut.
+*/
+.tags{display:flex;flex-wrap:wrap;gap:8px}
+
+/* Jag ger varje indatatagg en egen ram, monospace-text och ett mindre format. */
+.tags span{font:13px ui-monospace,monospace;letter-spacing:.12em;padding:6px 12px;border:1px solid #2b2a45;color:#7d789e}
+
+/* 
+   Den här klassen formaterar uppmaningen längst ner i kortet.
+   En linje ovanför texten skiljer den från resten av informationen.
+*/
+.enter{font:bold 18px ui-monospace,monospace;letter-spacing:.18em;color:var(--c);padding-top:16px;border-top:1px solid #2b2a45}
+
+/* 
+   När användaren håller musen över kortet ökar jag teckenavståndet
+   i uppmaningen. Det blir ytterligare en liten visuell återkoppling.
+*/
+.card:hover .enter{letter-spacing:.26em}
+
+/* Jag använder en dämpad färg för hjälptexterna på sidan. */
+.hint{color:#7d789e}
+
+/* 
+   På skärmar som är högst 600px breda minskar jag sidans padding.
+   Jag tar också bort kortens fasta minsta höjd så att de kan anpassas
+   bättre efter innehållet på mindre skärmar.
+*/
+@media(max-width:600px){main{padding:40px 20px}.card{min-height:auto}}
+</style>
+</head>
+
+<body>
+<main>
+<!-- Jag presenterar först installationens typ som en mindre etikett. -->
+<div class="mono sub">INTERAKTIV INSTALLATION</div>
+
+<!-- Sidans stora huvudrubrik. -->
+<h1>OUT OF ORDER</h1>
+
+<!-- En kort instruktion som berättar vad besökaren ska göra. -->
+<div class="mono hint">VÄLJ VÄRLD ATT KLIVA IN I</div>
+
+<!-- 
+   Här finns en tom behållare där JavaScript senare skapar korten för de fyra världarna.
+   id="grid" gör att jag kan hitta just det här elementet från JavaScript.
+-->
+<div class="grid" id="grid"></div>
+
+<!-- Jag visar vilka tangentbordstangenter som kan användas för att starta världarna. -->
+<div class="mono hint">TANGENTER [1] [2] [3] [4] ELLER MUSKLICK STARTAR VÄRLD</div>
+</main>
+
+<script>
+// [namn, färg, beskrivning, indata]. Tagg = namn i versaler, sökväg = namn i gemener + "/index.html".
+
+/* 
+   Jag hämtar den tomma grid-behållaren från HTML-dokumentet.
+   Där ska korten för de olika världarna skapas.
+*/
+const g=document.getElementById("grid"),
+
+/* 
+   Funktionen go tar emot ett länkelement som parameter.
+   Först lägger jag till klassen leaving på body, vilket startar uttoningsanimationen.
+   Sedan väntar jag 600 millisekunder innan jag ändrar sidans adress.
+   På så sätt hinner övergången börja innan webbläsaren navigerar vidare.
+*/
+go=a=>{document.body.classList.add("leaving");setTimeout(()=>location.href=a.getAttribute("href"),600)};
+
+/* 
+   Här bygger jag upp innehållet för alla fyra världarna.
+   Varje array innehåller:
+   1. Världens namn.
+   2. Världens accentfärg.
+   3. En kort beskrivning.
+   4. En lista över den indata eller utrustning som används i världen.
+
+   Genom att samla informationen här kan jag skapa alla kort med samma HTML-struktur
+   i stället för att skriva varje kort separat i HTML-koden.
+*/
+g.innerHTML=[
+["Gravitation","#ff3df2","Klappa dina händer. Se hur partiklarna svarar när tyngdkraften ändras.",["MIKROFON","KLAPP","MELLANSLAG"]],
+["Vatten","#19e6ff","Luta glaset och häll. Vattnet förändras för varje nivå i hallen.",["MELLANSLAG","MICRO:BIT"]],
+["Friktion","#b06bff","Greppa kulan med handen, släpp den och se hur friktionen ändrar rörelsen.",["KAMERA","HAND","MUSPLATTA"]],
+["Skugga","#6f8cff","Rör dig framför kameran. Se hur din skugga sviker dig.",["KAMERA","KROPP"]]
+
+/* 
+   map() går igenom varje värld i arrayen.
+   Jag plockar ut namn, färg, beskrivning och indatataggar ur respektive array.
+   i är världens position i listan och börjar på 0.
+*/
+].map(([n,c,d,t],i)=>
+
+/* 
+   För varje värld skapar jag ett HTML-kort med en template literal.
+   ${...} gör att jag kan stoppa in JavaScript-värden direkt i HTML-strängen.
+
+   Länken får en sökväg som byggs av världens namn i gemener följt av /index.html.
+   Exempelvis blir Gravitation till gravitation/index.html.
+
+   CSS-variabeln --c får världens färg, så att kortets rubrik, ramar och effekter
+   kan använda samma accentfärg.
+*/
+`<a class="card" href="${n.toLowerCase()}/index.html" style="--c:${c}">
+
+  <!-- Jag visar världens löpnummer och motsvarande tangentbordsnummer. -->
+  <div class="num mono"><span>VÄRLD 0${i+1}</span><i>[${i+1}]</i></div>
+
+  <!-- Världens namn används som kortets huvudrubrik. -->
+  <h2>${n}</h2>
+
+  <!-- Jag visar även namnet i versaler som en separat grafisk etikett. -->
+  <div class="t">${n.toUpperCase()}</div>
+
+  <!-- Här visas den beskrivning som hör till just den här världen. -->
+  <p>${d}</p>
+
+  <!-- 
+     Jag skapar en tagg för varje indata som finns i världens lista.
+     Den inre map()-funktionen går igenom t och skapar ett span-element per tagg.
+     join("") sätter ihop alla span-element till en enda HTML-sträng utan kommatecken.
+  -->
+  <div class="tags">${t.map(x=>`<span>${x}</span>`).join("")}</div>
+
+  <!-- En visuell uppmaning som visar att kortet går att öppna. -->
+  <div class="enter">KLIV IN →</div>
+</a>`
+
+/* 
+   join("") sätter ihop de fyra färdiga korten till en enda sträng.
+   Jag tilldelar sedan strängen till grid-elementets innerHTML.
+   Webbläsaren tolkar HTML-strängen och visar korten på sidan.
+*/
+).join("");
+
+/* 
+   Här lägger jag en klicklyssnare på hela grid-behållaren.
+   I stället för att lägga en separat lyssnare på varje kort använder jag
+   event delegation: klicket fångas upp av den gemensamma föräldern.
+
+   e.target är det element som användaren faktiskt klickade på.
+   closest("a") letar upp närmaste länk-element, även om användaren klickade
+   på exempelvis en rubrik eller en span inuti kortet.
+*/
+g.onclick=e=>{const a=e.target.closest("a");
+
+/* 
+   Om klicket skedde inuti ett kort hittar jag länken och kör följande:
+   preventDefault() stoppar webbläsarens vanliga direkta navigering.
+   Därefter anropar jag go(a), som först tonar ut sidan och sedan navigerar.
+*/
+a&&(e.preventDefault(),go(a))};
+
+/* 
+   Jag lyssnar även globalt på tangentbordet.
+   e.key innehåller tangenten som användaren tryckte på.
+   Genom att omvandla den till ett tal och subtrahera 1 får jag rätt
+   index i g.children, eftersom listan börjar på index 0 medan tangenterna
+   börjar på 1.
+
+   Om det finns ett kort på den positionen startar jag det med go().
+   Om användaren trycker på en annan tangent händer ingenting här.
+*/
+onkeydown=e=>{const a=g.children[+e.key-1];a&&go(a)};
+
+/* 
+   pageshow körs när sidan visas, även när användaren kommer tillbaka
+   med webbläsarens bakåt- eller framåtknapp.
+   Jag tar då bort leaving-klassen så att sidan åter får normal opacitet.
+*/
+onpageshow=()=>document.body.classList.remove("leaving");
+</script>
+</body>
+</html>
+

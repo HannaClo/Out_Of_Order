@@ -1,0 +1,349 @@
+
+<!DOCTYPE html>
+<!-- index.html: ingången till Skuggvärlden. Först visas en startskärm; först när man klickar på KLIV IN I VÄRLDEN
+     laddas biblioteken och skripten och p5 startas (så kamera, ljud och nivåtid börjar när besökaren är redo,
+     och webbläsaren tillåter ljud eftersom ett klick har skett). -->
+<!-- Jag använder den här filen som startsida för Skuggvärlden.
+     Den visar först information om upplevelsen och väntar med att ladda själva programmet
+     tills besökaren väljer att starta. -->
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<!-- Jag anger teckenkodningen UTF-8 så att svenska bokstäver och andra specialtecken visas korrekt. -->
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Den här inställningen gör att sidan anpassar sin bredd efter enhetens skärm.
+     initial-scale=1 innebär att sidan visas i normal zoom från början. -->
+
+<title>Skuggvärlden</title>
+<!-- Titeln visas bland annat i webbläsarens flik. -->
+
+<style>
+/* Här börjar CSS-koden som styr hur startsidan och själva spelvyn ser ut. */
+
+/* Jag tar bort webbläsarens standardmarginaler och döljer sidans vanliga scrollning.
+   Bakgrunden är svart och canvasen ska kunna använda hela den tillgängliga ytan. */
+html,body{margin:0;overflow:hidden;background:#000}
+
+/* p5-canvasen visas som ett block så att den inte får extra mellanrum
+   som annars kan uppstå när bilder eller andra inline-element visas. */
+canvas{display:block}
+
+/* Nivåtext – samma utseende som HUD i Gravitationens värld */
+/* HUD står för heads-up display och är information som visas ovanpå själva upplevelsen.
+   Här bestämmer jag hur nivåinformationen ska placeras och se ut. */
+#level-hud{position:fixed;left:32px;top:32px;z-index:5;margin:0;padding:8px;box-sizing:border-box;
+ font-family:ui-monospace,Menlo,Consolas,"Courier New",monospace;font-size:13px;line-height:1.55;color:#cfc8ff;text-shadow:0 0 6px #000;
+ pointer-events:none;display:none}
+/* position:fixed gör att HUD:en placeras i förhållande till webbläsarfönstret.
+   z-index ser till att den kan ligga ovanpå andra element.
+   pointer-events:none gör att den inte fångar upp mus- eller pekhändelser.
+   display:none innebär att den är dold från början och kan visas senare av JavaScript. */
+
+/* Startskärm – samma utseende som Vattenvärlden. Färgerna nedan är det enda som skiljer världarnas startsidor åt. */
+#start{
+ /* Jag använder CSS-variabler för att samla färgerna på ett ställe.
+    Det gör det enklare att ändra färgtemat utan att behöva leta igenom alla CSS-regler. */
+ --accent:#6f8cff;             /* knapp, kanter, små rubriker */
+ --accent2:#ff9bd8;            /* siffrorna 01 02 03 */
+ --title:#a9bcff;              /* stora rubriken */
+ --glow1:#4f6cffaa;            /* ljus runt rubriken (nära) */
+ --glow2:#6f8cff55;            /* ljus runt rubriken (långt) */
+ --hover:#6f8cff66;            /* sken runt knappen vid hover */
+ --bg-top:#141c45;             /* bakgrund i mitten */
+ --bg-edge:#03040d;            /* bakgrund vid kanterna */
+ --line:#2c3a7a;               /* ramar runt rutorna */
+ --card:rgba(8,12,36,.65);     /* fyllning i rutorna */
+ --txt:#d6dcf5;                /* vanlig text */
+ --note:#a9b8f0;               /* tipset under rutorna */
+ --dim:#7684b8;                /* dämpad text (tangenter) */
+
+ /* Här ställer jag in själva startskärmens layout.
+    fixed och inset:0 gör att den täcker hela fönstret.
+    Flexbox används för att placera innehållet i en kolumn och centrera det.
+    clamp() gör att vissa mått anpassas mellan ett minsta och största värde beroende på skärmstorleken. */
+ font-family:"Avenir Next","Segoe UI",sans-serif;position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;
+ justify-content:center;justify-content:safe center;   /* centrerad, men scrollar om fönstret är för lågt */
+
+ /* Jag använder en radiell gradient som gör mitten ljusare och kanterna mörkare.
+    padding skapar utrymme runt innehållet så att det inte hamnar direkt mot skärmens kanter.
+    overflow-y:auto gör att innehållet kan scrollas om det inte får plats på skärmen.
+    scrollbar-width:none döljer rullningslisten i webbläsare som stöder egenskapen. */
+ gap:clamp(12px,2.2vh,22px);background:radial-gradient(ellipse at 50% 45%,var(--bg-top) 0%,var(--bg-edge) 72%);text-align:center;
+ padding:clamp(88px,15vh,140px) clamp(20px,5vw,72px) clamp(24px,3vh,36px);box-sizing:border-box;overflow-y:auto;scrollbar-width:none;
+
+ /* Jag låter startsidans genomskinlighet förändras mjukt när den får klassen leaving.
+    color anger standardfärgen för texten som inte har en egen färgregel. */
+ transition:opacity .9s;color:var(--txt)}   /* tonas ut mjukt */
+
+/* Jag döljer även rullningslisten i webbläsare som använder WebKit-baserad rendering. */
+#start::-webkit-scrollbar{display:none}
+
+/* När JavaScript lägger till klassen leaving tonas startsidan ut.
+   pointer-events:none gör samtidigt att den inte längre tar emot klick. */
+#start.leaving{opacity:0;pointer-events:none}
+
+/* Den lilla texten ovanför huvudrubriken får accentfärg och ett monospace-typsnitt.
+   letter-spacing ökar avståndet mellan bokstäverna. */
+.start-label{color:var(--accent);font:clamp(12px,1.2vw,16px) ui-monospace,Menlo,monospace;letter-spacing:.18em}
+
+/* Här bestämmer jag utseendet på den stora rubriken SKUGGVÄRLDEN.
+   clamp() anpassar storleken efter skärmen.
+   text-shadow ger rubriken ett blått ljussken. */
+#start h1{margin:0;font-size:clamp(30px,min(5.5vw,9.5vh),84px);line-height:1.05;overflow-wrap:anywhere;font-weight:500;letter-spacing:.015em;color:var(--title);
+ text-shadow:0 0 18px var(--glow1),0 0 40px var(--glow2)}
+
+/* Den här klassen används för den mindre texten under huvudrubriken.
+   Jag ger den accentfärgen och extra avstånd mellan bokstäverna. */
+.start-world{color:var(--accent);font:clamp(13px,1.2vw,16px) ui-monospace,Menlo,monospace;letter-spacing:.35em}
+
+/* Instruktionsrutorna placeras i ett CSS Grid.
+   På mindre skärmar visas de i en kolumn, vilket ändras till tre kolumner i en senare media query.
+   width begränsar hur bred hela instruktionsdelen får bli. */
+.start-steps{display:grid;grid-template-columns:1fr;width:min(1300px,100%);margin:clamp(16px,4vh,48px) auto clamp(8px,2vh,24px);gap:clamp(12px,2vw,28px)}
+
+/* Varje start-step är en egen instruktionsruta.
+   Jag använder flexbox för att placera innehållet i en kolumn och centrera det.
+   border skapar en tunn ram och background ger rutan en genomskinlig mörk fyllning. */
+.start-step{padding:clamp(18px,3vh,32px) 28px;min-height:min(24vh,280px);box-sizing:border-box;display:flex;flex-direction:column;align-items:center;
+ justify-content:flex-start;gap:clamp(8px,1.6vh,16px);border:1px solid var(--line);background:var(--card);text-align:center}
+
+/* Jag markerar numren 01, 02 och 03 med en separat färg så att stegen blir lätta att skilja åt. */
+.step-number{color:var(--accent2);font:15px ui-monospace,monospace;letter-spacing:.15em}
+
+/* strong används för rubriken i varje instruktionsruta.
+   Här får rubrikerna accentfärg och något större bokstavsavstånd. */
+.start-step strong{color:var(--accent);font-size:clamp(17px,1.5vw,22px);letter-spacing:.1em;min-height:0}
+
+/* Den här regeln träffar span-element inne i en instruktionsruta,
+   men inte span-elementet som innehåller stegets nummer.
+   På så sätt kan jag styra beskrivningstexten separat från numret. */
+.start-step span:not(.step-number){color:var(--txt);font-size:clamp(16px,1.45vw,21px);line-height:1.5}
+
+/* Tipstexten under rutorna får en mer dämpad färg och ett monospace-typsnitt.
+   max-width begränsar radlängden så att texten inte blir för bred. */
+.start-note{color:var(--note);font:clamp(12px,1.1vw,15px) ui-monospace,monospace;margin:4px 0;max-width:820px;line-height:1.7}
+
+/* Knappområdet använder flexbox och kan radbryta om knapparna inte får plats på samma rad. */
+.start-btns{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+
+/* Här styr jag hur knappen på startsidan ser ut.
+   Jag använder en genomskinlig bakgrund, en accentfärgad ram och en tydlig text.
+   transition gör att färg- och skuggeffekter kan förändras mjukt. */
+#start button{font:inherit;font-size:clamp(15px,1.3vw,19px);font-weight:bold;letter-spacing:.12em;padding:clamp(14px,2.2vh,20px) clamp(32px,4vw,52px);
+ border:2px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;border-radius:3px;transition:background .2s,color .2s,box-shadow .2s}
+
+/* hover aktiveras när muspekaren ligger över knappen.
+   focus-visible ger en liknande visuell markering när knappen får fokus, exempelvis via tangentbordet.
+   Jag ändrar bakgrund och textfärg och lägger till ett ljussken runt knappen. */
+#start button:hover,#start button:focus-visible{background:var(--accent);color:var(--bg-edge);box-shadow:0 0 24px var(--hover);outline:none}
+
+/* När knappen är avstängd gör jag den lite genomskinlig och ändrar pekarens utseende.
+   Det används exempelvis medan JavaScript laddar projektets filer. */
+#start button:disabled{opacity:.6;cursor:default}
+
+/* Den här raden visar information om kontrollerna.
+   flex-wrap gör att innehållet kan delas upp på flera rader om skärmen är smal. */
+.start-controls{display:flex;gap:12px 28px;color:var(--dim);font:clamp(11px,1vw,14px) ui-monospace,monospace;letter-spacing:.08em;flex-wrap:wrap;justify-content:center}
+
+/* Felmeddelanden får en orange färg.
+   min-height gör att området behåller en viss höjd även när inget felmeddelande visas. */
+#err{color:#ffb86b;font:14px ui-monospace,monospace;min-height:1em}
+
+/* Media query för bredare skärmar.
+   När skärmen är minst 900 pixlar bred visas de tre instruktionsrutorna bredvid varandra. */
+@media(min-width:900px){.start-steps{grid-template-columns:repeat(3,1fr)}}
+
+/* Media query för mindre skärmar.
+   Jag minskar avstånden runt innehållet och låter instruktionsrutorna bli lägre,
+   så att startsidan fungerar bättre på mobiltelefoner. */
+@media(max-width:600px){#start{padding:72px 20px 40px}.start-step{padding:18px;min-height:0}}
+</style>
+
+<!-- Jag laddar tillbaka.js separat och använder defer så att skriptet körs när HTML-dokumentet har lästs in.
+     Den här filen ligger en nivå ovanför den aktuella mappen, vilket förklarar ../ i sökvägen. -->
+<script src="../tillbaka.js" defer></script>
+</head>
+<body>
+
+<!-- Här skapar jag ett tomt område för nivåinformationen.
+     JavaScript kan senare skriva in text i elementet med hjälp av id:t level-hud. -->
+<pre id="level-hud"></pre>
+
+<!-- Startskärmen är det första besökaren ser.
+     Den ligger ovanpå den övriga sidan och innehåller titel, instruktioner och startknapp. -->
+<div id="start">
+
+  <!-- En liten etikett som visar att detta är en interaktiv installation och värld 04. -->
+  <div class="start-label">INTERAKTIV INSTALLATION · VÄRLD 04</div>
+
+  <!-- Huvudrubriken för den här delen av projektet. -->
+  <h1>SKUGGVÄRLDEN</h1>
+
+  <!-- En underrubrik som är en del av världens visuella tema. -->
+  <div class="start-world">OUT OF ORDER</div>
+
+  <!-- Här samlar jag de tre instruktionerna som förklarar hur besökaren ska använda installationen. -->
+  <div class="start-steps">
+
+    <!-- Första steget: besökaren ska ställa sig framför kameran så att hela kroppen syns. -->
+    <div class="start-step"><span class="step-number">01</span><strong>STÄLL DIG</strong><span>Ställ dig framför kameran så att hela kroppen syns.</span></div>
+
+    <!-- Andra steget: besökaren ska röra sig och observera hur skuggan följer kroppen. -->
+    <div class="start-step"><span class="step-number">02</span><strong>RÖR DIG</strong><span>Din skugga följer dig. Rör armar och ben och se vad som händer.</span></div>
+
+    <!-- Tredje steget: besökaren får utforska hur skuggan förändras genom de fem nivåerna. -->
+    <div class="start-step"><span class="step-number">03</span><strong>UTFORSKA</strong><span>Skuggan börjar leva sitt eget liv. Gå igenom fem nivåer av avvikelse.</span></div>
+  </div>
+
+  <!-- En kort påminnelse om att webbläsaren behöver få tillåtelse att använda kameran. -->
+  <p class="start-note">TIPS: Tillåt kameran när webbläsaren frågar.</p>
+
+  <!-- Jag placerar startknappen i en egen behållare.
+       Knappens id gör att jag kan hämta den i JavaScript och koppla en klickhändelse till den. -->
+  <div class="start-btns"><button id="go">KLIV IN I VÄRLDEN</button></div>
+
+  <!-- Här visar jag vilken typ av kontroll som används i upplevelsen. -->
+  <div class="start-controls"><span>[KAMERA] kropp</span></div>
+
+  <!-- Ett tomt område där JavaScript kan visa ett felmeddelande om någon fil inte går att ladda. -->
+  <div id="err"></div>
+</div>
+
+<script>
+// Här börjar JavaScript-koden som styr hur projektets filer laddas och hur upplevelsen startas.
+
+// Skripten laddas först vid klick och i ordning: en fil kan bara använda det som redan laddats. sketch.js ligger sist.
+// p5 = ritbibliotek, ml5 = bodyPose/MoveNet (kroppens leder). Sedan: config (inställningar), tracking (kamera -> kroppspunkter),
+// behavior (skuggans "galna" beteende), timeline (nivåer/tid), audio, environment (neonmiljö), renderer (ritning + kalibrering), sketch (huvudprogram).
+// Jag sparar alla skriptens sökvägar i en array.
+// Ordningen är viktig eftersom vissa filer använder klasser, variabler och funktioner som definieras i tidigare filer.
+// Därför laddar jag biblioteken först, sedan projektets moduler och sist sketch.js som innehåller huvudprogrammets kod.
+const SCRIPTS = [
+  // p5.js är biblioteket som används för att skapa canvasen och hantera ritningen.
+  "https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.3/p5.min.js",
+
+  // ml5.js ger tillgång till maskininlärningsfunktioner.
+  // I det här projektet används det för att kunna identifiera kroppens leder genom kamerabilden.
+  "https://cdn.jsdelivr.net/npm/ml5@1.2.1/dist/ml5.min.js",
+
+  // Projektets egna JavaScript-filer.
+  // config.js innehåller inställningarna som de andra delarna läser från.
+  "config.js",
+
+  // tracking.js ansvarar för att hämta och bearbeta kroppspunkterna från kameran.
+  "tracking.js",
+
+  // behavior.js innehåller logiken som gör att skuggan kan avvika från personens rörelser.
+  "behavior.js",
+
+  // timeline.js hanterar nivåernas tidsförlopp och övergångar.
+  "timeline.js",
+
+  // audio.js innehåller projektets ljudfunktioner.
+  "audio.js",
+
+  // environment.js ansvarar för bakgrunden och ljuseffekterna.
+  "environment.js",
+
+  // renderer.js ansvarar för att rita upp figuren och dess visuella delar.
+  "renderer.js",
+
+  // sketch.js laddas sist eftersom den fungerar som huvudprogrammet
+  // och använder funktioner och klasser från de tidigare filerna.
+  "sketch.js"
+];
+
+// Jag hämtar de HTML-element som JavaScript behöver arbeta med.
+// startEl är hela startsidan, goBtn är startknappen och errEl är området för felmeddelanden.
+const startEl = document.getElementById("start"), goBtn = document.getElementById("go"), errEl = document.getElementById("err");
+
+// started håller reda på om startprocessen redan har påbörjats.
+// Jag använder den för att förhindra att flera klick startar flera parallella laddningar.
+let started = false;
+
+// Laddar en fil och väntar tills den är klar innan nästa får laddas
+// Den här funktionen tar emot en sökväg till ett skript och returnerar ett Promise.
+// Ett Promise gör att jag kan vänta på att en asynkron operation ska bli klar.
+const loadScript = src => new Promise((resolve, reject) => {
+
+  // Jag skapar ett nytt script-element i HTML-dokumentet.
+  const s = document.createElement("script");
+
+  // src anger vilken JavaScript-fil webbläsaren ska hämta.
+  // När filen har laddats färdigt anropas resolve.
+  s.src = src; s.onload = resolve;
+
+  // Om webbläsaren inte kan ladda filen anropas reject med ett fel som innehåller filens sökväg.
+  s.onerror = () => reject(new Error(src));
+
+  // Jag lägger till script-elementet i dokumentets head.
+  // Då börjar webbläsaren hämta och läsa in skriptet.
+  document.head.appendChild(s);
+});
+
+// async betyder att funktionen kan använda await för att vänta på asynkrona operationer.
+// Den här funktionen körs när besökaren väljer att starta Skuggvärlden.
+async function startWorld() {
+
+  // Om startprocessen redan har påbörjats avbryter jag funktionen direkt.
+  // Det förhindrar att användaren råkar starta flera laddningar samtidigt.
+  if (started) return;
+
+  // Jag markerar att startprocessen har börjat.
+  started = true;
+
+  // Jag tömmer eventuella tidigare felmeddelanden.
+  errEl.textContent = "";
+
+  // Jag stänger av startknappen under laddningen så att den inte kan tryckas flera gånger.
+  goBtn.disabled = true;
+
+  // Jag ändrar knapptexten så att besökaren ser att innehållet håller på att laddas.
+  goBtn.textContent = "LADDAR …";
+
+  // try gör att jag kan försöka ladda alla filer och fånga upp eventuella fel.
+  try {
+
+    // Jag går igenom arrayen SCRIPTS i den ordning filerna ligger.
+    // await gör att nästa fil inte börjar laddas förrän den föregående har laddats klart.
+    // Det är viktigt eftersom vissa filer behöver innehåll från tidigare filer.
+    for (const src of SCRIPTS) await loadScript(src);
+
+    // p5 startar sig självt bara om sketch.js fanns när p5 laddades – det gjorde den inte, så vi startar p5 här
+    // Eftersom sketch.js laddas efter p5-biblioteket behöver jag starta p5 manuellt när alla skript har laddats.
+    // Kontrollen gör att jag inte skapar en ny p5-instans om en sådan redan finns.
+    if (!p5.instance) new p5();
+
+    // När allt har laddats lägger jag till klassen leaving på startsidan.
+    // CSS-regeln för den klassen gör att startsidan tonas ut.
+    startEl.classList.add("leaving");           // tona ut startsidan
+
+    // Efter en sekund tar jag bort själva startskärmen från dokumentet.
+    // Jag väntar så att CSS-övergången hinner bli klar innan elementet tas bort.
+    setTimeout(() => startEl.remove(), 1000);   // ta bort den när övertoningen är klar
+
+  // catch körs om något av skripten inte går att ladda eller om ett fel uppstår i laddningsförsöket.
+  } catch (e) {
+
+    // Jag återställer started så att besökaren kan försöka igen.
+    started = false;
+
+    // Jag aktiverar startknappen igen eftersom laddningen misslyckades.
+    goBtn.disabled = false;
+
+    // Jag ändrar knapptexten så att det blir tydligt att ett nytt försök är möjligt.
+    goBtn.textContent = "FÖRSÖK IGEN";
+
+    // Jag visar ett felmeddelande med information om vilken fil som inte kunde laddas.
+    // e.message innehåller felinformationen som skickades med när Promise avvisades.
+    errEl.textContent = "Kunde inte ladda " + e.message + " (kolla uppkopplingen och att filen ligger i mappen).";
+  }
+}
+
+// Jag kopplar ett klick på startknappen till funktionen startWorld.
+// När besökaren klickar börjar alltså laddningen av biblioteken och projektets filer.
+goBtn.addEventListener("click", startWorld);
+</script>
+</body>
+</html>
